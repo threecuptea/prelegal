@@ -1,0 +1,93 @@
+# ===== Python / FastAPI =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env.bak
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+nosetests.xml
+
+# mypy / ruff / pyright
+.mypy_cache/
+.ruff_cache/
+pyrightconfig.json
+
+# Alembic / DB migrations auto-generated
+# (keep versions/ tracked; ignore local override files)
+alembic.ini.local
+
+# ===== Next.js / Node =====
+node_modules/
+.next/
+out/
+.cache/
+
+# Next.js build output
+.vercel/
+.netlify/
+
+# npm / yarn / pnpm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+package-lock.json.bak
+
+# TypeScript build info
+*.tsbuildinfo
+next-env.d.ts
+
+# ===== IDEs & editors =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ===== Logs =====
+logs/
+*.log
+
+# ===== Docker =====
+.docker/
+docker-compose.override.yml
+
+# ===== Misc =====
+*.pem
+*.key
+*.cert
+tmp/
+.tmp/
