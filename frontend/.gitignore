@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Re-include source dirs that match the parent .gitignore's Python "lib/" rule
+!app/lib/
+!app/lib/**
