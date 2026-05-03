@@ -57,6 +57,24 @@ Backend available at http://localhost:8000
 
 ## Implementation Status
 
+### Completed
+- **PL-2** — CommonPaper legal document templates and `catalog.json` (12 documents in `templates/`).
+- **PL-3** — Next.js 16 + React 19 + Tailwind 4 Mutual NDA Creator under `frontend/app/` (form → live preview → markdown download / print to PDF). Vitest unit tests in `frontend/app/lib/`.
+- **PL-4** — V1 technical foundation:
+  - `frontend/next.config.ts` set to `output: "export"` so the existing UI builds to a static export at `frontend/out/`.
+  - `backend/` uv project (Python 3.12, FastAPI, uvicorn, python-dotenv) with `main.py` mounting `/_next` static assets and a GET/HEAD catch-all that resolves `<path>` → `<path>.html` → SPA fallback to `index.html`. CORS allows `localhost:3000` and `localhost:8000`. `/api/*` is reserved (404 from the catch-all) so future routers in `backend/routes/` are not shadowed. Path traversal is guarded with `Path.is_relative_to`.
+  - `backend/routes/__init__.py` placeholder establishes the convention; per-area routers (`auth.py`, `chat.py`, `documents.py`) are deferred to feature tickets.
+  - Multi-stage `Dockerfile` (node:20-alpine builds the frontend export → python:3.12-slim runs `uvicorn main:app`).
+  - Single-service `docker-compose.yaml` exposing port 8000 and reading `.env` via `env_file`.
+  - `scripts/start-{mac,linux}.sh`, `scripts/stop-{mac,linux}.sh`, `scripts/start-windows.ps1`, `scripts/stop-windows.ps1` — thin wrappers over `docker compose up --build -d` / `docker compose down`.
+  - 7 backend pytest cases covering health, `/api/*` 404, static index/asset serving, SPA fallback, and path-traversal guards.
+
+### Deferred (future tickets)
+- SQLite + users table created on container startup.
+- AI chat backend (LiteLLM via OpenRouter, Cerebras provider, structured outputs).
+- Auth, document persistence, and per-document-type routes (`auth.py`, `chat.py`, `documents.py`).
 
 ### Current API Endpoints
-
+- `GET /api/health` → `{"status": "ok"}`
+- `GET /_next/*` → static Next.js bundle assets (mounted from `frontend/out/_next`)
+- `GET|HEAD /{path}` → static frontend (`frontend/out/<path>`, `frontend/out/<path>.html`, or SPA fallback to `index.html`)
