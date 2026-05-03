@@ -27,7 +27,8 @@ There is an OPENROUTER_API_KEY in the .env file in the project root.
 ## Technical design
 
 The entire project should be packaged into a Docker container.  
-The backend should be in backend/ and be a uv project, using FastAPI.  
+The backend should be in backend/ and be a uv project, using FastAPI.
+Please put all FastAPI routes under a subfolder `routes` of `backend` folder.  For example, auth.py for authentication-related routes, chat.py for chat-related routes and documents.py for documents-related routes.
 The frontend should be in frontend/  
 The database should use SQLLite and be created from scratch each time the Docker container is brought up, allowing for a users table with sign up and sign in.  
 Consider statically building the frontend and serving it via FastAPI, if that will work.  
