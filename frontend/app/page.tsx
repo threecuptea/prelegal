@@ -1,5 +1,5 @@
-import NDAForm from './nda-form'
+import NDAChat from './nda-chat'
 
 export default function Home() {
-  return <NDAForm />
+  return <NDAChat />
 }
