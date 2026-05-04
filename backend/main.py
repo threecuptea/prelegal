@@ -18,6 +18,8 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
 
+from routes.chat import router as chat_router  # noqa: E402  (env must load first)
+
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent.parent / "frontend" / "out"
@@ -39,6 +41,9 @@ app.add_middleware(
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+app.include_router(chat_router)
 
 
 if STATIC_DIR.exists():

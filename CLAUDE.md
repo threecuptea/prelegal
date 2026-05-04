@@ -60,6 +60,11 @@ Backend available at http://localhost:8000
 ### Completed
 - **PL-2** — CommonPaper legal document templates and `catalog.json` (12 documents in `templates/`).
 - **PL-3** — Next.js 16 + React 19 + Tailwind 4 Mutual NDA Creator under `frontend/app/` (form → live preview → markdown download / print to PDF). Vitest unit tests in `frontend/app/lib/`.
+- **PL-5** — Replaced the form UX with a freeform AI chat for the Mutual NDA:
+  - Frontend: `frontend/app/nda-chat.tsx` (client component) drives a two-column layout (chat on the left, collapsible field summary + live `NDAPreview` on the right). `nda-form.tsx` was removed; `NDAPreview` and `downloadMarkdown` were extracted to `frontend/app/nda-preview.tsx`. `frontend/app/lib/nda-chat-helpers.ts` exposes `mergeFieldUpdates` (drops null/undefined, honors `""` so optional fields like `modifications` can be cleared) and `missingRequiredFields`. Stable per-message ids, `AbortController`-based cancellation on `Start over`, brand-purple submit/Send/Download buttons (`#753991`).
+  - Backend: `POST /api/chat` in `backend/routes/chat.py` is stateless — accepts `{messages, fields}`, calls LiteLLM `acompletion` against `openrouter/openai/gpt-oss-120b` via Cerebras with `response_format=ChatResponse` (per `.claude/skills/cerebras/SKILL.md`). System prompt enforces "ask 1–2 questions, always end with a follow-on, never invent values, only set `done: true` after explicit user confirmation". Pydantic models use `typing.Literal` for the discriminated string fields; `Field(max_length=...)` caps message size (4 000 chars) and history length (100). Returns 503 if `OPENROUTER_API_KEY` is unset, 502 on upstream / parse errors. Wired in `backend/main.py` via `app.include_router(chat_router)` after `load_dotenv()`.
+  - Deps: `litellm`, `pydantic` added to `backend/pyproject.toml`.
+  - Tests: 9 new pytest cases in `backend/tests/test_chat.py` (LiteLLM monkeypatched); new vitest suite in `frontend/app/lib/nda-chat-helpers.test.ts`. Full suite: 16 backend, 45 frontend, all passing; `npm run build` produces a clean static export.
 - **PL-4** — V1 technical foundation:
   - `frontend/next.config.ts` set to `output: "export"` so the existing UI builds to a static export at `frontend/out/`.
   - `backend/` uv project (Python 3.12, FastAPI, uvicorn, python-dotenv) with `main.py` mounting `/_next` static assets and a GET/HEAD catch-all that resolves `<path>` → `<path>.html` → SPA fallback to `index.html`. CORS allows `localhost:3000` and `localhost:8000`. `/api/*` is reserved (404 from the catch-all) so future routers in `backend/routes/` are not shadowed. Path traversal is guarded with `Path.is_relative_to`.
@@ -71,10 +76,11 @@ Backend available at http://localhost:8000
 
 ### Deferred (future tickets)
 - SQLite + users table created on container startup.
-- AI chat backend (LiteLLM via OpenRouter, Cerebras provider, structured outputs).
-- Auth, document persistence, and per-document-type routes (`auth.py`, `chat.py`, `documents.py`).
+- Auth, document persistence, and remaining per-document-type routes (`auth.py`, `documents.py`).
+- Chat for document types beyond Mutual NDA.
 
 ### Current API Endpoints
 - `GET /api/health` → `{"status": "ok"}`
+- `POST /api/chat` → AI chat for Mutual NDA. Body: `{messages: [{role, content}], fields: <NDAData snapshot>}`. Response: `{reply, field_updates, done}`.
 - `GET /_next/*` → static Next.js bundle assets (mounted from `frontend/out/_next`)
 - `GET|HEAD /{path}` → static frontend (`frontend/out/<path>`, `frontend/out/<path>.html`, or SPA fallback to `index.html`)

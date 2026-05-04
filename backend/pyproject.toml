@@ -7,6 +7,8 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "python-dotenv>=1.0",
+    "litellm>=1.83.14",
+    "pydantic>=2.12.5",
 ]
 
 [dependency-groups]
