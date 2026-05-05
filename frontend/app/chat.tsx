@@ -2,119 +2,116 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  CONFIDENTIALITY_OPTIONS,
-  MNDA_TERM_OPTIONS,
-  type NDAData,
-  clampYears,
-  formatDate,
-} from './lib/nda-document'
-import {
-  type ChatMessage,
-  type FieldUpdates,
-  mergeFieldUpdates,
-  missingRequiredFields,
-} from './lib/nda-chat-helpers'
-import { NDAPreview, downloadMarkdown } from './nda-preview'
+  DOCUMENT_REGISTRY,
+  mergeDocumentFields,
+  missingRequiredDocumentFields,
+  type ChatResponse,
+  type DocumentFields,
+  type DocumentType,
+  type PartyInfo,
+} from './lib/document-types'
+import { DocumentPreview, downloadMarkdown } from './document-preview'
 
 let _msgIdSeq = 0
 const nextMessageId = () => `m${++_msgIdSeq}`
 
-interface UIMessage extends ChatMessage {
+interface UIMessage {
   id: string
+  role: 'user' | 'assistant'
+  content: string
 }
 
-// Common Paper / Prelegal brand purple — used for primary submit actions
-// (per CLAUDE.md color scheme: "Purple Secondary: #753991 (submit buttons)").
 const PURPLE = '#753991'
 const PURPLE_DARK = '#5e2c75'
-
-const todayISO = () => new Date().toISOString().split('T')[0]
-
-const buildDefaults = (): NDAData => ({
-  purpose: '',
-  effectiveDate: todayISO(),
-  mndaTerm: 'expires',
-  mndaTermYears: '1',
-  termOfConfidentiality: 'years',
-  termOfConfidentialityYears: '1',
-  governingLaw: '',
-  jurisdiction: '',
-  modifications: '',
-  party1Name: '',
-  party1Title: '',
-  party1Company: '',
-  party1Address: '',
-  party2Name: '',
-  party2Title: '',
-  party2Company: '',
-  party2Address: '',
-})
 
 const buildGreeting = (): UIMessage => ({
   id: nextMessageId(),
   role: 'assistant',
   content:
-    "Hi! I'll help you draft a Common Paper Mutual NDA. Let's start simple — what's the purpose of the relationship between the two parties (e.g., evaluating a partnership, exploring a vendor engagement)?",
+    "Hi! I can help you draft any Common Paper legal agreement — a Mutual NDA, Cloud Service Agreement, Data Processing Agreement, and more. What kind of agreement do you need today?",
 })
 
-interface ChatApiResponse {
-  reply: string
-  field_updates: FieldUpdates
-  done: boolean
+// ── FieldSummary ──────────────────────────────────────────────────────────────
+
+function PartySubRows({ label, party }: { label: string; party?: PartyInfo }) {
+  const subFields: [string, string | undefined][] = [
+    ['Name', party?.name],
+    ['Title', party?.title],
+    ['Company', party?.company],
+    ['Address', party?.noticeAddress],
+  ]
+  return (
+    <>
+      {subFields.map(([sub, val]) => (
+        <div key={sub} className="grid grid-cols-3 gap-3 py-1.5">
+          <dt className="text-gray-400 col-span-1 text-xs">
+            {label} — {sub}
+          </dt>
+          <dd className="text-gray-900 col-span-2 break-words text-xs">
+            {val || <span className="text-gray-300 italic">(empty)</span>}
+          </dd>
+        </div>
+      ))}
+    </>
+  )
 }
 
-const FIELD_ORDER: { key: keyof NDAData; label: string; format?: (v: string, d: NDAData) => string }[] = [
-  { key: 'purpose', label: 'Purpose' },
-  { key: 'effectiveDate', label: 'Effective Date', format: (v) => formatDate(v) },
-  {
-    key: 'mndaTerm',
-    label: 'MNDA Term',
-    format: (v, d) => {
-      const opt = MNDA_TERM_OPTIONS.find((o) => o.id === v)
-      return opt ? opt.label(clampYears(d.mndaTermYears)) : v
-    },
-  },
-  {
-    key: 'termOfConfidentiality',
-    label: 'Term of Confidentiality',
-    format: (v, d) => {
-      const opt = CONFIDENTIALITY_OPTIONS.find((o) => o.id === v)
-      return opt ? opt.label(clampYears(d.termOfConfidentialityYears)) : v
-    },
-  },
-  { key: 'governingLaw', label: 'Governing Law' },
-  { key: 'jurisdiction', label: 'Jurisdiction' },
-  { key: 'modifications', label: 'Modifications' },
-  { key: 'party1Name', label: 'Party 1 — Name' },
-  { key: 'party1Title', label: 'Party 1 — Title' },
-  { key: 'party1Company', label: 'Party 1 — Company' },
-  { key: 'party1Address', label: 'Party 1 — Notice Address' },
-  { key: 'party2Name', label: 'Party 2 — Name' },
-  { key: 'party2Title', label: 'Party 2 — Title' },
-  { key: 'party2Company', label: 'Party 2 — Company' },
-  { key: 'party2Address', label: 'Party 2 — Notice Address' },
-]
+function FieldSummary({
+  data,
+  documentType,
+}: {
+  data: DocumentFields
+  documentType: DocumentType | null
+}) {
+  if (!documentType) {
+    return (
+      <details open className="bg-white rounded-lg border border-gray-200 shadow-sm">
+        <summary className="cursor-pointer select-none px-4 py-3 font-semibold text-gray-800">
+          Field Summary
+        </summary>
+        <p className="px-4 pb-4 pt-1 text-sm text-gray-400 italic">
+          Document type not yet identified — start chatting to begin.
+        </p>
+      </details>
+    )
+  }
 
-function FieldSummary({ data }: { data: NDAData }) {
-  const missing = missingRequiredFields(data)
+  const config = DOCUMENT_REGISTRY[documentType]
+  const missing = missingRequiredDocumentFields(data, documentType)
+
   return (
     <details open className="bg-white rounded-lg border border-gray-200 shadow-sm">
       <summary className="cursor-pointer select-none px-4 py-3 font-semibold text-gray-800 flex items-center justify-between">
-        <span>Field Summary</span>
+        <span>Field Summary — {config.displayName}</span>
         <span className="text-xs font-normal text-gray-500">
-          {missing.length === 0 ? 'All required fields filled' : `${missing.length} required field(s) missing`}
+          {missing.length === 0
+            ? 'All required fields filled'
+            : `${missing.length} required field(s) missing`}
         </span>
       </summary>
       <div className="px-4 pb-4 pt-1 text-sm">
         <dl className="divide-y divide-gray-100">
-          {FIELD_ORDER.map(({ key, label, format }) => {
-            const raw = data[key]
-            const display = raw ? (format ? format(raw, data) : raw) : ''
+          {config.fields.map((f) => {
+            if (f.isParty) {
+              const party = data[f.key] as PartyInfo | undefined
+              return (
+                <div key={f.key} className="py-1">
+                  <PartySubRows label={f.label} party={party} />
+                </div>
+              )
+            }
+            const raw = data[f.key]
+            const display =
+              raw != null && raw !== ''
+                ? f.format
+                  ? f.format(raw, data)
+                  : String(raw)
+                : null
             return (
-              <div key={key} className="grid grid-cols-3 gap-3 py-1.5">
-                <dt className="text-gray-500 col-span-1">{label}</dt>
+              <div key={f.key} className="grid grid-cols-3 gap-3 py-1.5">
+                <dt className="text-gray-500 col-span-1">{f.label}</dt>
                 <dd className="text-gray-900 col-span-2 break-words">
-                  {display || <span className="text-gray-300 italic">(empty)</span>}
+                  {display ?? <span className="text-gray-300 italic">(empty)</span>}
                 </dd>
               </div>
             )
@@ -125,6 +122,8 @@ function FieldSummary({ data }: { data: NDAData }) {
   )
 }
 
+// ── ChatPanel ─────────────────────────────────────────────────────────────────
+
 function ChatPanel({
   messages,
   input,
@@ -132,7 +131,8 @@ function ChatPanel({
   isSending,
   onSend,
   onReset,
-  done,
+  isComplete,
+  documentType,
 }: {
   messages: UIMessage[]
   input: string
@@ -140,7 +140,8 @@ function ChatPanel({
   isSending: boolean
   onSend: () => void
   onReset: () => void
-  done: boolean
+  isComplete: boolean
+  documentType: DocumentType | null
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
@@ -156,14 +157,16 @@ function ChatPanel({
     }
   }
 
+  const subtitle = documentType
+    ? `Drafting a ${DOCUMENT_REGISTRY[documentType].displayName}${isComplete ? ' · finalized' : ''}`
+    : 'Tell me what agreement you need'
+
   return (
     <div className="flex flex-col bg-white rounded-lg border border-gray-200 shadow-sm h-[calc(100vh-7rem)]">
       <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold text-gray-800">AI Chat</h2>
-          <p className="text-xs text-gray-500">
-            Drafting a Mutual NDA{done ? ' · finalized' : ''}
-          </p>
+          <p className="text-xs text-gray-500">{subtitle}</p>
         </div>
         <button
           type="button"
@@ -229,16 +232,17 @@ function ChatPanel({
   )
 }
 
-export default function NDAChat() {
-  const [data, setData] = useState<NDAData>(buildDefaults)
+// ── Main component ────────────────────────────────────────────────────────────
+
+export default function Chat() {
+  const [data, setData] = useState<DocumentFields>({})
+  const [documentType, setDocumentType] = useState<DocumentType | null>(null)
   const [messages, setMessages] = useState<UIMessage[]>(() => [buildGreeting()])
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
-  const [done, setDone] = useState(false)
+  const [isComplete, setIsComplete] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Tracks the currently in-flight request so reset/unmount can cancel it and
-  // ignore late responses. Bumping `requestSeq` invalidates older fetches.
   const abortRef = useRef<AbortController | null>(null)
   const requestSeq = useRef(0)
 
@@ -272,17 +276,29 @@ export default function NDAChat() {
         }),
         signal: controller.signal,
       })
-      if (!res.ok) {
-        throw new Error(`Chat failed: ${res.status}`)
+      if (!res.ok) throw new Error(`Chat failed: ${res.status}`)
+
+      const body = (await res.json()) as ChatResponse
+      if (seq !== requestSeq.current) return
+
+      const {
+        response: replyText,
+        isComplete: complete,
+        documentType: detected,
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        suggestedDocument: _suggested,
+        ...fieldUpdates
+      } = body
+
+      setData((prev) => mergeDocumentFields(prev, fieldUpdates))
+      if (detected) setDocumentType(detected)
+      setIsComplete(complete)
+      if (replyText) {
+        setMessages((prev) => [
+          ...prev,
+          { id: nextMessageId(), role: 'assistant', content: replyText },
+        ])
       }
-      const body = (await res.json()) as ChatApiResponse
-      if (seq !== requestSeq.current) return // stale (reset or newer send raced us)
-      setData((prev) => mergeFieldUpdates(prev, body.field_updates ?? {}))
-      setMessages((prev) => [
-        ...prev,
-        { id: nextMessageId(), role: 'assistant', content: body.reply },
-      ])
-      setDone(Boolean(body.done))
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
       if (seq !== requestSeq.current) return
@@ -304,23 +320,30 @@ export default function NDAChat() {
   function reset() {
     abortRef.current?.abort()
     requestSeq.current++
-    setData(buildDefaults())
+    setData({})
+    setDocumentType(null)
     setMessages([buildGreeting()])
     setInput('')
     setIsSending(false)
-    setDone(false)
+    setIsComplete(false)
     setError(null)
   }
 
-  const canDownload = done || missingRequiredFields(data).length === 0
+  const canDownload =
+    documentType !== null &&
+    (isComplete || missingRequiredDocumentFields(data, documentType).length === 0)
+
+  const headerTitle = documentType
+    ? `${DOCUMENT_REGISTRY[documentType].displayName} — AI Chat`
+    : 'Legal Document — AI Chat'
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="no-print bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-3">
-        <h1 className="text-lg font-bold text-gray-900 flex-1">Mutual NDA — AI Chat</h1>
+        <h1 className="text-lg font-bold text-[#032147] flex-1">{headerTitle}</h1>
         <button
           type="button"
-          onClick={() => downloadMarkdown(data)}
+          onClick={() => documentType && downloadMarkdown(data, documentType)}
           disabled={!canDownload}
           className="px-4 py-2 text-sm font-medium text-white rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
           style={{ backgroundColor: PURPLE }}
@@ -354,14 +377,15 @@ export default function NDAChat() {
             isSending={isSending}
             onSend={send}
             onReset={reset}
-            done={done}
+            isComplete={isComplete}
+            documentType={documentType}
           />
         </div>
         <div className="space-y-6">
           <div className="no-print">
-            <FieldSummary data={data} />
+            <FieldSummary data={data} documentType={documentType} />
           </div>
-          <NDAPreview data={data} />
+          <DocumentPreview data={data} documentType={documentType} />
         </div>
       </main>
     </div>

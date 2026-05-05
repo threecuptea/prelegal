@@ -1,8 +1,8 @@
 """Prelegal V1 backend.
 
 Serves the Next.js static export from ``frontend/out`` and exposes API
-routes under ``/api``. Feature routes will be registered from
-``backend/routes/`` in subsequent tickets.
+routes under ``/api/<router>`` (e.g. ``/api/chat``). Feature routes are
+registered from ``backend/routes/`` with per-router prefixes.
 """
 
 from __future__ import annotations
