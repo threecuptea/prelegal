@@ -354,12 +354,12 @@ export default function Chat() {
     }
   }
 
-  async function saveDocument() {
-    if (!documentType) return
+  async function saveDocument(): Promise<boolean> {
+    if (!documentType) return false
     const token = getToken()
     if (!token) {
       router.replace('/auth')
-      return
+      return false
     }
     const title = `${DOCUMENT_REGISTRY[documentType].displayName} Draft`
     setSaving(true)
@@ -396,13 +396,20 @@ export default function Chat() {
         if (toastTimer.current) clearTimeout(toastTimer.current)
         toastTimer.current = setTimeout(() => setSaveToast(false), 2000)
       }
+      return ok
     } catch (e) {
       if (!(e instanceof Error && e.message === 'Session expired')) {
         setError('Save failed — please try again.')
       }
+      return false
     } finally {
       setSaving(false)
     }
+  }
+
+  async function saveAndPrint() {
+    await saveDocument()
+    window.print()
   }
 
   function reset() {
@@ -436,15 +443,9 @@ export default function Chat() {
         <h1 className="text-base font-semibold text-[#032147] flex-1 truncate">
           {headerTitle}
         </h1>
-        <button
-          type="button"
-          onClick={saveDocument}
-          disabled={!documentType || saving}
-          className="px-3 py-1.5 text-xs font-medium text-white rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ backgroundColor: '#209dd7' }}
-        >
-          {saving ? 'Saving…' : saveToast ? 'Saved ✓' : 'Save'}
-        </button>
+        {saveToast && (
+          <span className="text-xs text-green-600 font-medium">Saved ✓</span>
+        )}
         <button
           type="button"
           onClick={() => documentType && downloadMarkdown(data, documentType)}
@@ -458,11 +459,11 @@ export default function Chat() {
         </button>
         <button
           type="button"
-          onClick={() => window.print()}
-          disabled={!canDownload}
+          onClick={saveAndPrint}
+          disabled={!documentType || saving}
           className="px-3 py-1.5 text-xs font-medium text-white bg-gray-800 rounded-md hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Print / Save PDF
+          {saving ? 'Saving…' : 'Save & Print PDF'}
         </button>
       </div>
 
