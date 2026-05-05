@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   DOCUMENT_REGISTRY,
   mergeDocumentFields,
@@ -11,6 +12,9 @@ import {
   type PartyInfo,
 } from './lib/document-types'
 import { DocumentPreview, downloadMarkdown } from './document-preview'
+import { authFetch, getToken } from './lib/auth'
+import AppHeader from './components/app-header'
+import DisclaimerBanner from './components/disclaimer-banner'
 
 let _msgIdSeq = 0
 const nextMessageId = () => `m${++_msgIdSeq}`
@@ -162,7 +166,7 @@ function ChatPanel({
     : 'Tell me what agreement you need'
 
   return (
-    <div className="flex flex-col bg-white rounded-lg border border-gray-200 shadow-sm h-[calc(100vh-7rem)]">
+    <div className="flex flex-col bg-white rounded-lg border border-gray-200 shadow-sm h-[calc(100vh-11rem)]">
       <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold text-gray-800">AI Chat</h2>
@@ -235,6 +239,7 @@ function ChatPanel({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function Chat() {
+  const router = useRouter()
   const [data, setData] = useState<DocumentFields>({})
   const [documentType, setDocumentType] = useState<DocumentType | null>(null)
   const [messages, setMessages] = useState<UIMessage[]>(() => [buildGreeting()])
@@ -242,12 +247,42 @@ export default function Chat() {
   const [isSending, setIsSending] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [savedDocId, setSavedDocId] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveToast, setSaveToast] = useState(false)
 
   const abortRef = useRef<AbortController | null>(null)
   const requestSeq = useRef(0)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Auth guard + docId hydration (runs once on mount)
+  useEffect(() => {
+    const token = getToken()
+    if (!token) {
+      router.replace('/auth')
+      return
+    }
+    const params = new URLSearchParams(window.location.search)
+    const docId = params.get('docId')
+    if (!docId) return
+    const numId = parseInt(docId, 10)
+    if (isNaN(numId)) return
+    setSavedDocId(numId)
+    authFetch(`/api/documents/${numId}`)
+      .then(async (res) => {
+        if (!res.ok) return
+        const doc = await res.json()
+        setData((doc.fields as DocumentFields) ?? {})
+        if (doc.document_type) setDocumentType(doc.document_type as DocumentType)
+      })
+      .catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    return () => abortRef.current?.abort()
+    return () => {
+      abortRef.current?.abort()
+      if (toastTimer.current) clearTimeout(toastTimer.current)
+    }
   }, [])
 
   async function send() {
@@ -267,7 +302,7 @@ export default function Chat() {
     const seq = ++requestSeq.current
 
     try {
-      const res = await fetch('/api/chat', {
+      const res = await authFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -317,16 +352,69 @@ export default function Chat() {
     }
   }
 
+  async function saveDocument() {
+    if (!documentType) return
+    const token = getToken()
+    if (!token) {
+      router.replace('/auth')
+      return
+    }
+    const title = `${DOCUMENT_REGISTRY[documentType].displayName} Draft`
+    setSaving(true)
+    try {
+      let ok = false
+      if (savedDocId === null) {
+        const res = await authFetch('/api/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, document_type: documentType, fields: data }),
+        })
+        if (res.ok) {
+          const doc = await res.json()
+          setSavedDocId(doc.id)
+          window.history.replaceState({}, '', `?docId=${doc.id}`)
+          ok = true
+        } else {
+          setError('Save failed — please try again.')
+        }
+      } else {
+        const res = await authFetch(`/api/documents/${savedDocId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, fields: data }),
+        })
+        if (res.ok) {
+          ok = true
+        } else {
+          setError('Save failed — please try again.')
+        }
+      }
+      if (ok) {
+        setSaveToast(true)
+        if (toastTimer.current) clearTimeout(toastTimer.current)
+        toastTimer.current = setTimeout(() => setSaveToast(false), 2000)
+      }
+    } catch (e) {
+      if (!(e instanceof Error && e.message === 'Session expired')) {
+        setError('Save failed — please try again.')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
   function reset() {
     abortRef.current?.abort()
     requestSeq.current++
     setData({})
     setDocumentType(null)
+    setSavedDocId(null)
     setMessages([buildGreeting()])
     setInput('')
     setIsSending(false)
     setIsComplete(false)
     setError(null)
+    window.history.replaceState({}, '', '/')
   }
 
   const canDownload =
@@ -339,13 +427,27 @@ export default function Chat() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="no-print bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-3">
-        <h1 className="text-lg font-bold text-[#032147] flex-1">{headerTitle}</h1>
+      <AppHeader />
+      <DisclaimerBanner />
+
+      <div className="no-print bg-white border-b border-gray-200 px-6 py-2 flex items-center gap-2">
+        <h1 className="text-base font-semibold text-[#032147] flex-1 truncate">
+          {headerTitle}
+        </h1>
+        <button
+          type="button"
+          onClick={saveDocument}
+          disabled={!documentType || saving}
+          className="px-3 py-1.5 text-xs font-medium text-white rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ backgroundColor: '#209dd7' }}
+        >
+          {saving ? 'Saving…' : saveToast ? 'Saved ✓' : 'Save'}
+        </button>
         <button
           type="button"
           onClick={() => documentType && downloadMarkdown(data, documentType)}
           disabled={!canDownload}
-          className="px-4 py-2 text-sm font-medium text-white rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 text-xs font-medium text-white rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
           style={{ backgroundColor: PURPLE }}
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = PURPLE_DARK)}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = PURPLE)}
@@ -356,11 +458,11 @@ export default function Chat() {
           type="button"
           onClick={() => window.print()}
           disabled={!canDownload}
-          className="px-4 py-2 text-sm font-medium text-white bg-gray-800 rounded-md hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 text-xs font-medium text-white bg-gray-800 rounded-md hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Print / Save PDF
         </button>
-      </header>
+      </div>
 
       {error && (
         <div className="no-print bg-red-50 border-b border-red-200 text-red-800 text-sm px-6 py-2">
