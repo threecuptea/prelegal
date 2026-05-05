@@ -130,6 +130,7 @@ When all required fields for the identified document type are filled, summarize 
 
 OUTPUT:
 You MUST return a single JSON object matching the ChatResponse schema. Set only the fields you are updating this turn.
+CRITICAL: `response` must NEVER be empty or null. Every response must end with a direct follow-up question so the user is never left waiting. If you have nothing new to ask, acknowledge the last input and ask for the next missing field.
 """
 
 

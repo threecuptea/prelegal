@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Prelegal is a SaaS product that lets users draft legal agreements by chatting with an AI. The available documents are defined in `catalog.json` (12 Common Paper templates in `templates/`). Currently only the Mutual NDA has a working AI-chat flow; auth, persistence, and the other 11 document types are in future tickets.
+Prelegal is a SaaS product that lets users draft legal agreements by chatting with an AI. The available documents are defined in `catalog.json` (12 Common Paper templates in `templates/`). All 11 document types have a working AI-chat flow. Auth, document persistence, and multi-user support are fully implemented.
 
 ## Development process
 
@@ -58,7 +58,7 @@ Business logic belongs in `backend/services/` (e.g. `chat_service.py`); route fu
 
 The frontend is in `frontend/` — Next.js 16, React 19, Tailwind 4. It is statically exported (`next.config.ts` → `output: "export"`) to `frontend/out/`, which FastAPI serves at runtime. The `frontend/AGENTS.md` note is important: read `node_modules/next/dist/docs/` before writing Next.js-specific code because this version has breaking API changes.
 
-The database uses SQLite, created from scratch each container startup (deferred to a future ticket — no DB exists yet).
+The database uses SQLite (`backend/db.py`). Schema is created on startup via `init_db()` called from the FastAPI lifespan. In Docker the DB file lives at `/data/prelegal.db` (named volume `prelegal-data` for restart persistence). In local dev it defaults to `./prelegal.db` in the backend directory (override with `PRELEGAL_DB_PATH` env var).
 
 Backend available at http://localhost:8000
 
@@ -66,22 +66,35 @@ Backend available at http://localhost:8000
 
 ### Request flow
 1. Browser loads the statically-exported Next.js SPA from FastAPI (`GET /`).
-2. User interacts with `frontend/app/nda-chat.tsx` (client component, two-column layout: chat left, field summary + live preview right).
-3. Each user turn `POST /api/chat` sends the full conversation history plus the current `NDAData` snapshot (stateless — no server-side session).
-4. `backend/routes/chat.py` calls LiteLLM with `response_format=ChatResponse` (Pydantic structured output). Returns `{reply, field_updates, done}`.
-5. Frontend applies `mergeFieldUpdates` (from `frontend/app/lib/nda-chat-helpers.ts`) to update the `NDAData` state. `null`/`undefined` values are dropped so a partial response never wipes filled fields; empty strings are honored so optional fields (e.g. `modifications`) can be cleared.
+2. Unauthenticated users are redirected to `/auth` (sign in / sign up). JWT is stored in `sessionStorage`.
+3. Authenticated users land on `frontend/app/chat.tsx` (two-column: chat left, field summary + live preview right). Loading a saved document appends `?docId=<id>` to the URL; the chat hydrates fields from `GET /api/documents/<id>` on mount.
+4. Each user turn `POST /api/chat` sends the full conversation history plus the current `DocumentFields` snapshot (stateless). The `Authorization: Bearer <jwt>` header is sent on all API calls via `authFetch`.
+5. `backend/routes/chat.py` calls LiteLLM with `response_format=ChatResponse` (Pydantic structured output). Returns `{response, isComplete, documentType, suggestedDocument, ...fields}`.
+6. Frontend applies `mergeDocumentFields` to update state. The explicit **Save** button POSTs/PUTs to `/api/documents`.
 
 ### Key files
 - `frontend/app/lib/document-types.ts` — `DocumentFields` interface, `DOCUMENT_REGISTRY` (all 11 doc types), `mergeDocumentFields`, `missingRequiredDocumentFields`, `generateCoverPage`, escape utilities.
-- `frontend/app/chat.tsx` — unified chat UI, `DocumentFields` state, `documentType: DocumentType | null` state, AbortController cancellation on "Start over", `FieldSummary` driven by registry.
+- `frontend/app/lib/auth.ts` — `getToken/setToken/clearToken` (sessionStorage), `authFetch` (injects Bearer header, clears token + redirects on 401).
+- `frontend/app/chat.tsx` — unified chat UI with auth guard, Save button, `?docId` hydration, `AppHeader`, disclaimer banner.
+- `frontend/app/auth/page.tsx` — sign in / sign up page (new startup page).
+- `frontend/app/documents/page.tsx` — saved documents list with Load/Delete actions.
+- `frontend/app/components/app-header.tsx` — shared nav: logo, My Documents link, user email, Sign Out.
+- `frontend/app/components/disclaimer-banner.tsx` — "documents are drafts" yellow banner.
 - `frontend/app/document-preview.tsx` — generic `DocumentPreview` (cover page only), `downloadMarkdown`.
-- `backend/models/chat.py` — `ChatResponse` flat model (LLM schema + API response), `ChatRequest`, `PartyInfoExtraction`. `MAX_MESSAGE_CHARS`, `MAX_MESSAGES` constants.
+- `backend/db.py` — `init_db()`, `get_db()` context manager (sqlite3, WAL mode). Schema: `account` + `document` tables.
+- `backend/models/chat.py` — `ChatResponse` flat model (LLM schema + API response), `ChatRequest`. `MAX_MESSAGE_CHARS`, `MAX_MESSAGES` constants.
+- `backend/models/auth.py` — `SignupRequest`, `SigninRequest`, `TokenResponse`.
+- `backend/models/documents.py` — `DocumentCreate`, `DocumentUpdate`, `DocumentSummary`, `DocumentDetail`.
+- `backend/services/auth_service.py` — bcrypt hash/verify, JWT create/decode (PyJWT HS256), signup/signin (5-attempt lockout), `get_current_account` FastAPI dependency.
 - `backend/services/chat_service.py` — `SYSTEM_PROMPT` (all 11 doc types), `snapshot_summary`, `build_messages`, `call_llm`.
+- `backend/services/document_service.py` — document CRUD via `asyncio.to_thread`; ownership enforced by `account_id`.
+- `backend/routes/auth.py` — `/api/auth/signup`, `/api/auth/signin`.
+- `backend/routes/documents.py` — `/api/documents` CRUD, all JWT-protected.
 - `backend/routes/chat.py` — thin adapter: API-key guard + delegates to service.
-- `backend/main.py` — loads `.env`, mounts `/_next` static assets, registers `chat_router`, catch-all serves `frontend/out/` with SPA fallback.
+- `backend/main.py` — loads `.env`, lifespan calls `init_db()`, registers all routers, SPA fallback.
 
 ### Routing guard
-`/api/*` paths in the catch-all raise 404 so future API routers are never shadowed by the static file handler.
+`/api/*` paths in the catch-all raise 404 so API routers are never shadowed by the static file handler.
 
 ## Color Scheme
 - Accent Yellow: `#ecad0a`
@@ -106,13 +119,22 @@ Backend available at http://localhost:8000
   - Frontend: `frontend/app/lib/document-types.ts` is the central registry — `DOCUMENT_REGISTRY` keyed by `DocumentType` slug, generic `mergeDocumentFields` (with party shallow-merge), `missingRequiredDocumentFields`, `generateCoverPage` (cover page only; standard terms linked to Common Paper URL). `chat.tsx` replaces `nda-chat.tsx`; state is `DocumentFields = {}` plus `documentType: DocumentType | null`. `document-preview.tsx` replaces `nda-preview.tsx` with generic `DocumentPreview`.
   - Deleted: `nda-chat.tsx`, `nda-preview.tsx`, `lib/nda-document.ts`, `lib/nda-chat-helpers.ts`.
   - Tests: 19 backend, 23 frontend, all passing; clean static export.
-
-### Deferred (future tickets)
-- SQLite + users table created on container startup.
-- Auth (`backend/routes/auth.py`), document persistence (`backend/routes/documents.py`).
+- **PL-7** — Multi-user auth, document persistence, and UI polish:
+  - Auth: `POST /api/auth/signup` and `/signin` (bcrypt + PyJWT HS256, sessionStorage). Account locks after 5 failed attempts (HTTP 423).
+  - Documents: `GET/POST /api/documents`, `GET/PUT/DELETE /api/documents/{id}`. All JWT-protected. Fields stored as JSON blob; ownership enforced by `account_id`.
+  - Persistence: SQLite DB at `/data/prelegal.db` in Docker (named volume `prelegal-data`).
+  - Frontend: `/auth` sign-in/sign-up page (new startup page), `/documents` saved docs list, chat updated with auth guard, Save button, `?docId` hydration, `AppHeader`, disclaimer banner.
+  - Tests: 35 backend (added 16), 23 frontend, all passing.
 
 ### Current API Endpoints
 - `GET /api/health` → `{"status": "ok"}`
-- `POST /api/chat` → AI chat for all 11 document types. Body: `{messages: [{role, content}], fields: <ChatResponse snapshot>}`. Response: flat `ChatResponse` with `response`, `isComplete`, `documentType`, `suggestedDocument`, and all document fields.
+- `POST /api/auth/signup` → `{access_token, token_type, email}` (201)
+- `POST /api/auth/signin` → `{access_token, token_type, email}` (401 bad creds, 423 locked)
+- `GET /api/documents` → `[{id, title, document_type, created_at, updated_at}]` (auth required)
+- `POST /api/documents` → `{id, title, document_type, fields, ...}` (auth required, 201)
+- `GET /api/documents/{id}` → `{id, title, document_type, fields, ...}` (auth required)
+- `PUT /api/documents/{id}` → updated document (auth required)
+- `DELETE /api/documents/{id}` → 204 (auth required)
+- `POST /api/chat` → AI chat for all 11 document types. Body: `{messages, fields}`. Response: flat `ChatResponse`.
 - `GET /_next/*` → static Next.js bundle assets
-- `GET|HEAD /{path}` → static frontend (SPA fallback to `index.html`)
+- `GET|HEAD /{path}` → static frontend (`/` chat, `/auth`, `/documents`; SPA fallback to `index.html`)

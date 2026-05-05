@@ -328,12 +328,14 @@ export default function Chat() {
       setData((prev) => mergeDocumentFields(prev, fieldUpdates))
       if (detected) setDocumentType(detected)
       setIsComplete(complete)
-      if (replyText) {
-        setMessages((prev) => [
-          ...prev,
-          { id: nextMessageId(), role: 'assistant', content: replyText },
-        ])
-      }
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextMessageId(),
+          role: 'assistant',
+          content: replyText || "Got it — what else would you like to add or change?",
+        },
+      ])
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
       if (seq !== requestSeq.current) return
