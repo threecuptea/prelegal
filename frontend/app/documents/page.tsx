@@ -20,10 +20,12 @@ interface DocumentSummary {
 
 function formatDate(dt: string): string {
   // SQLite returns "YYYY-MM-DD HH:MM:SS" — replace space with T for ISO 8601
-  return new Date(dt.replace(' ', 'T') + 'Z').toLocaleDateString('en-US', {
+  return new Date(dt.replace(' ', 'T') + 'Z').toLocaleString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   })
 }
 
