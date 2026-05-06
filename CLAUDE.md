@@ -73,14 +73,15 @@ Backend available at http://localhost:8000
 6. Frontend applies `mergeDocumentFields` to update state. The explicit **Save** button POSTs/PUTs to `/api/documents`.
 
 ### Key files
-- `frontend/app/lib/document-types.ts` — `DocumentFields` interface, `DOCUMENT_REGISTRY` (all 11 doc types), `mergeDocumentFields`, `missingRequiredDocumentFields`, `generateCoverPage`, escape utilities.
+- `frontend/app/lib/document-types.ts` — `DocumentFields` interface, `DOCUMENT_REGISTRY` (all 11 doc types, each with `templateFile`), `mergeDocumentFields`, `missingRequiredDocumentFields`, `generateCoverPage` (cover page only, kept for tests), `processTemplateContent` (strips spans, removes leading heading), `generateDocument` (full self-contained doc: cover page → standard terms → signatures), escape utilities.
 - `frontend/app/lib/auth.ts` — `getToken/setToken/clearToken` (sessionStorage), `authFetch` (injects Bearer header, clears token + redirects on 401).
-- `frontend/app/chat.tsx` — unified chat UI with auth guard, Save button, `?docId` hydration, `AppHeader`, disclaimer banner.
+- `frontend/app/chat.tsx` — unified chat UI with auth guard, Save button, `?docId` hydration, `AppHeader`, disclaimer banner. Fetches `/templates/{templateFile}` when document type is detected; passes `templateContent` to preview and download.
 - `frontend/app/auth/page.tsx` — sign in / sign up page (new startup page).
 - `frontend/app/documents/page.tsx` — saved documents list with Load/Delete actions.
 - `frontend/app/components/app-header.tsx` — shared nav: logo, My Documents link, user email, Sign Out.
 - `frontend/app/components/disclaimer-banner.tsx` — "documents are drafts" yellow banner.
-- `frontend/app/document-preview.tsx` — generic `DocumentPreview` (cover page only), `downloadMarkdown`.
+- `frontend/app/document-preview.tsx` — `TemplateContent` (inline markdown renderer), `DocumentPreview` (cover page fields → standard terms → signatures), `downloadMarkdown` (uses `generateDocument` when template available; falls back to `generateCoverPage`).
+- `frontend/public/templates/` — 11 Common Paper standard-terms `.md` files served as static assets (included in `frontend/out/` at build time).
 - `backend/db.py` — `init_db()`, `get_db()` context manager (sqlite3, WAL mode). Schema: `account` + `document` tables.
 - `backend/models/chat.py` — `ChatResponse` flat model (LLM schema + API response), `ChatRequest`. `MAX_MESSAGE_CHARS`, `MAX_MESSAGES` constants.
 - `backend/models/auth.py` — `SignupRequest`, `SigninRequest`, `TokenResponse`.
@@ -125,6 +126,13 @@ Backend available at http://localhost:8000
   - Persistence: SQLite DB at `/data/prelegal.db` in Docker (named volume `prelegal-data`).
   - Frontend: `/auth` sign-in/sign-up page (new startup page), `/documents` saved docs list, chat updated with auth guard, Save button, `?docId` hydration, `AppHeader`, disclaimer banner.
   - Tests: 35 backend (added 16), 23 frontend, all passing.
+- **PL-8** — Self-contained document generation (PR #10):
+  - Full Common Paper standard terms now embedded in the live preview, downloaded `.md`, and print PDF for all 11 document types. Previously only a link to commonpaper.com was shown.
+  - Document structure: Cover Page fields → Standard Terms (from `frontend/public/templates/`) → Signatures with "By signing this Cover Page…" statement at the bottom.
+  - `processTemplateContent` strips `<span>` tags and the template's own leading heading before embedding. `generateDocument` produces the complete self-contained markdown; `generateCoverPage` kept for backward compatibility.
+  - `DocumentPreview` renders standard terms inline (loading / unavailable / content states). Template fetched client-side from `/templates/{templateFile}` with cancellation guard on document type change.
+  - `downloadMarkdown` filename drops `-cover` suffix (e.g. `Mutual-NDA.md`). `saveAndPrint` only opens print dialog when save succeeds.
+  - Tests: 35 backend, 37 frontend (added 13), all passing.
 
 ### Current API Endpoints
 - `GET /api/health` → `{"status": "ok"}`
