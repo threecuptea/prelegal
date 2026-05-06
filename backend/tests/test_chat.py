@@ -208,6 +208,67 @@ def test_chat_no_fields_on_first_turn(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "?" in response.json()["response"]
 
 
+def test_chat_template_mode_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """isTemplateMode=True must be accepted and return 200."""
+    monkeypatch.setattr(
+        chat_module,
+        "acompletion",
+        _fake_completion_factory({
+            "response": "Sure — which fields would you like to change? Effective date or party 2?",
+            "isComplete": False,
+        }),
+    )
+    response = client.post(
+        "/api/chat",
+        json={
+            "messages": [{"role": "user", "content": "Change party 2 to Bob."}],
+            "fields": {"documentType": "mutual-nda", "purpose": "Partnership evaluation."},
+            "isTemplateMode": True,
+        },
+    )
+    assert response.status_code == 200
+
+
+def test_chat_template_mode_injects_system_message() -> None:
+    """build_messages includes the template-mode instruction when isTemplateMode is True."""
+    from models.chat import ChatMessage, ChatRequest, ChatResponse
+    from services.chat_service import _TEMPLATE_MODE_INSTRUCTION, build_messages
+
+    request = ChatRequest(
+        messages=[ChatMessage(role="user", content="Change the date.")],
+        fields=ChatResponse(documentType="mutual-nda"),
+        isTemplateMode=True,
+    )
+    messages = build_messages(request)
+    contents = [m["content"] for m in messages if m["role"] == "system"]
+    assert any(_TEMPLATE_MODE_INSTRUCTION in c for c in contents)
+
+
+def test_chat_no_template_mode_no_extra_message() -> None:
+    """build_messages does NOT inject the template-mode instruction for normal sessions."""
+    from models.chat import ChatMessage, ChatRequest
+    from services.chat_service import _TEMPLATE_MODE_INSTRUCTION, build_messages
+
+    request = ChatRequest(
+        messages=[ChatMessage(role="user", content="I need an NDA.")],
+        isTemplateMode=False,
+    )
+    messages = build_messages(request)
+    contents = [m["content"] for m in messages if m["role"] == "system"]
+    assert not any(_TEMPLATE_MODE_INSTRUCTION in c for c in contents)
+
+
+def test_chat_snapshot_summary_includes_today() -> None:
+    """snapshot_summary always includes today's date."""
+    from datetime import date
+
+    from services.chat_service import snapshot_summary
+
+    today = date.today().isoformat()
+    result = snapshot_summary(None)
+    assert today in result
+
+
 def test_chat_party_nested_object(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         chat_module,

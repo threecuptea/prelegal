@@ -120,3 +120,4 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(..., max_length=MAX_MESSAGES)
     # The accumulated document state from the frontend; None on the first turn.
     fields: Optional[ChatResponse] = None
+    isTemplateMode: bool = False

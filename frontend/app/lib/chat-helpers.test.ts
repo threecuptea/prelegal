@@ -5,9 +5,27 @@ import {
   generateCoverPage,
   generateDocument,
   processTemplateContent,
+  isEffectiveDateInPast,
   DOCUMENT_REGISTRY,
   type DocumentFields,
 } from './document-types'
+
+// ── isEffectiveDateInPast ────────────────────────────────────────────────────
+
+describe('isEffectiveDateInPast', () => {
+  it('returns true for a date clearly in the past', () => {
+    expect(isEffectiveDateInPast('2020-01-01')).toBe(true)
+  })
+
+  it('returns false for a date clearly in the future', () => {
+    expect(isEffectiveDateInPast('2099-12-31')).toBe(false)
+  })
+
+  it('returns false for today', () => {
+    const today = new Date().toISOString().split('T')[0]
+    expect(isEffectiveDateInPast(today)).toBe(false)
+  })
+})
 
 // ── mergeDocumentFields ───────────────────────────────────────────────────────
 

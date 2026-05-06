@@ -10,6 +10,9 @@ import {
   type PartyInfo,
 } from './lib/document-types'
 
+const BLUE = '#209dd7'
+const BLUE_DARK = '#1a84b5'
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function SignatureTable({ party1, party2 }: { party1?: PartyInfo; party2?: PartyInfo }) {
@@ -90,10 +93,12 @@ export function DocumentPreview({
   data,
   documentType,
   templateContent,
+  onUseAsTemplate,
 }: {
   data: DocumentFields
   documentType: DocumentType | null
   templateContent?: string | null
+  onUseAsTemplate?: () => void
 }) {
   if (!documentType) {
     return (
@@ -107,9 +112,23 @@ export function DocumentPreview({
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-6 text-sm print:shadow-none print:border-0">
-      <div>
-        <h2 className="text-xl font-bold text-[#032147]">{config.displayName}</h2>
-        <p className="text-xs text-gray-400 mt-1">Common Paper Standard Agreement</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-[#032147]">{config.displayName}</h2>
+          <p className="text-xs text-gray-400 mt-1">Common Paper Standard Agreement</p>
+        </div>
+        {onUseAsTemplate && (
+          <button
+            type="button"
+            onClick={onUseAsTemplate}
+            className="no-print shrink-0 px-3 py-1.5 text-xs font-medium text-white rounded-md"
+            style={{ backgroundColor: BLUE }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = BLUE_DARK)}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = BLUE)}
+          >
+            Use as Template
+          </button>
+        )}
       </div>
 
       <hr className="border-gray-200" />
