@@ -28,10 +28,6 @@ body {
   }
 
   @page {
-    margin: 0;
-  }
-
-  body {
-    padding: 1.5cm;
+    margin: 1.5cm;
   }
 }
