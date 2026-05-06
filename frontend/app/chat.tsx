@@ -9,7 +9,6 @@ import {
   type ChatResponse,
   type DocumentFields,
   type DocumentType,
-  type PartyInfo,
 } from './lib/document-types'
 import { DocumentPreview, downloadMarkdown } from './document-preview'
 import { authFetch, getToken } from './lib/auth'
@@ -34,97 +33,6 @@ const buildGreeting = (): UIMessage => ({
   content:
     "Hi! I can help you draft any Common Paper legal agreement — a Mutual NDA, Cloud Service Agreement, Data Processing Agreement, and more. What kind of agreement do you need today?",
 })
-
-// ── FieldSummary ──────────────────────────────────────────────────────────────
-
-function PartySubRows({ label, party }: { label: string; party?: PartyInfo }) {
-  const subFields: [string, string | undefined][] = [
-    ['Name', party?.name],
-    ['Title', party?.title],
-    ['Company', party?.company],
-    ['Address', party?.noticeAddress],
-  ]
-  return (
-    <>
-      {subFields.map(([sub, val]) => (
-        <div key={sub} className="grid grid-cols-3 gap-3 py-1.5">
-          <dt className="text-gray-400 col-span-1 text-xs">
-            {label} — {sub}
-          </dt>
-          <dd className="text-gray-900 col-span-2 break-words text-xs">
-            {val || <span className="text-gray-300 italic">(empty)</span>}
-          </dd>
-        </div>
-      ))}
-    </>
-  )
-}
-
-function FieldSummary({
-  data,
-  documentType,
-}: {
-  data: DocumentFields
-  documentType: DocumentType | null
-}) {
-  if (!documentType) {
-    return (
-      <details open className="bg-white rounded-lg border border-gray-200 shadow-sm">
-        <summary className="cursor-pointer select-none px-4 py-3 font-semibold text-gray-800">
-          Field Summary
-        </summary>
-        <p className="px-4 pb-4 pt-1 text-sm text-gray-400 italic">
-          Document type not yet identified — start chatting to begin.
-        </p>
-      </details>
-    )
-  }
-
-  const config = DOCUMENT_REGISTRY[documentType]
-  const missing = missingRequiredDocumentFields(data, documentType)
-
-  return (
-    <details open className="bg-white rounded-lg border border-gray-200 shadow-sm">
-      <summary className="cursor-pointer select-none px-4 py-3 font-semibold text-gray-800 flex items-center justify-between">
-        <span>Field Summary — {config.displayName}</span>
-        <span className="text-xs font-normal text-gray-500">
-          {missing.length === 0
-            ? 'All required fields filled'
-            : `${missing.length} required field(s) missing`}
-        </span>
-      </summary>
-      <div className="px-4 pb-4 pt-1 text-sm">
-        <dl className="divide-y divide-gray-100">
-          {config.fields.map((f) => {
-            if (f.isParty) {
-              const party = data[f.key] as PartyInfo | undefined
-              return (
-                <div key={f.key} className="py-1">
-                  <PartySubRows label={f.label} party={party} />
-                </div>
-              )
-            }
-            const raw = data[f.key]
-            const display =
-              raw != null && raw !== ''
-                ? f.format
-                  ? f.format(raw, data)
-                  : String(raw)
-                : null
-            return (
-              <div key={f.key} className="grid grid-cols-3 gap-3 py-1.5">
-                <dt className="text-gray-500 col-span-1">{f.label}</dt>
-                <dd className="text-gray-900 col-span-2 break-words">
-                  {display ?? <span className="text-gray-300 italic">(empty)</span>}
-                </dd>
-              </div>
-            )
-          })}
-        </dl>
-      </div>
-    </details>
-  )
-}
 
 // ── ChatPanel ─────────────────────────────────────────────────────────────────
 
@@ -502,9 +410,6 @@ export default function Chat() {
           />
         </div>
         <div className="space-y-6">
-          <div className="no-print">
-            <FieldSummary data={data} documentType={documentType} />
-          </div>
           <DocumentPreview
             data={data}
             documentType={documentType}
