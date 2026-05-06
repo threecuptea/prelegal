@@ -75,7 +75,7 @@ Backend available at http://localhost:8000
 ### Key files
 - `frontend/app/lib/document-types.ts` — `DocumentFields` interface, `DOCUMENT_REGISTRY` (all 11 doc types, each with `templateFile`), `mergeDocumentFields`, `missingRequiredDocumentFields`, `generateCoverPage` (cover page only, kept for tests), `processTemplateContent` (strips spans, removes leading heading), `generateDocument` (full self-contained doc: cover page → standard terms → signatures), escape utilities.
 - `frontend/app/lib/auth.ts` — `getToken/setToken/clearToken` (sessionStorage), `authFetch` (injects Bearer header, clears token + redirects on 401).
-- `frontend/app/chat.tsx` — unified chat UI with auth guard, Save button, `?docId` hydration, `AppHeader`, disclaimer banner. Fetches `/templates/{templateFile}` when document type is detected; passes `templateContent` to preview and download.
+- `frontend/app/chat.tsx` — unified chat UI with auth guard, Save button, `?docId` hydration, `AppHeader`, disclaimer banner. Fetches `/templates/{templateFile}` when document type is detected; passes `templateContent` to preview and download. No Field Summary — Cover Page in the document preview serves that purpose.
 - `frontend/app/auth/page.tsx` — sign in / sign up page (new startup page).
 - `frontend/app/documents/page.tsx` — saved documents list with Load/Delete actions.
 - `frontend/app/components/app-header.tsx` — shared nav: logo, My Documents link, user email, Sign Out.
@@ -132,6 +132,7 @@ Backend available at http://localhost:8000
   - `processTemplateContent` strips `<span>` tags and the template's own leading heading before embedding. `generateDocument` produces the complete self-contained markdown; `generateCoverPage` kept for backward compatibility.
   - `DocumentPreview` renders standard terms inline (loading / unavailable / content states). Template fetched client-side from `/templates/{templateFile}` with cancellation guard on document type change.
   - `downloadMarkdown` filename drops `-cover` suffix (e.g. `Mutual-NDA.md`). `saveAndPrint` only opens print dialog when save succeeds.
+  - Field Summary removed — redundant now that Cover Page is shown inline in the document preview.
   - Tests: 35 backend, 37 frontend (added 13), all passing.
 
 ### Current API Endpoints
