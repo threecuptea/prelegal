@@ -460,7 +460,7 @@ export default function Chat() {
         <button
           type="button"
           onClick={saveAndPrint}
-          disabled={!documentType || saving}
+          disabled={!isComplete || saving}
           className="px-3 py-1.5 text-xs font-medium text-white bg-gray-800 rounded-md hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {saving ? 'Saving…' : 'Save & Print PDF'}
