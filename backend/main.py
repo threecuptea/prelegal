@@ -8,7 +8,10 @@ registered from ``backend/routes/`` with per-router prefixes.
 from __future__ import annotations
 
 import logging
+import os
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import AsyncGenerator
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -18,13 +21,25 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
 
-from routes.chat import router as chat_router  # noqa: E402  (env must load first)
+import db  # noqa: E402  (env must load first)
+from routes.auth import router as auth_router  # noqa: E402
+from routes.chat import router as chat_router  # noqa: E402
+from routes.documents import router as documents_router  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent.parent / "frontend" / "out"
 
-app = FastAPI(title="Prelegal API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    if not os.environ.get("JWT_SECRET"):
+        logger.warning("JWT_SECRET env var not set — auth endpoints will fail")
+    db.init_db()
+    yield
+
+
+app = FastAPI(title="Prelegal API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,7 +58,9 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+app.include_router(auth_router)
 app.include_router(chat_router)
+app.include_router(documents_router)
 
 
 if STATIC_DIR.exists():
