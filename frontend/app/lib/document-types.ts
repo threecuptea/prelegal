@@ -104,6 +104,7 @@ export interface DocumentTypeConfig {
   documentType: DocumentType
   displayName: string
   commonPaperUrl: string
+  templateFile: string
   fields: FieldDescriptor[]
 }
 
@@ -158,6 +159,7 @@ export const DOCUMENT_REGISTRY: Record<DocumentType, DocumentTypeConfig> = {
     documentType: 'mutual-nda',
     displayName: 'Mutual NDA',
     commonPaperUrl: 'https://commonpaper.com/standards/mutual-nda/1.0/',
+    templateFile: 'Mutual-NDA.md',
     fields: [
       ...COMMON_CORE_FIELDS,
       {
@@ -189,6 +191,7 @@ export const DOCUMENT_REGISTRY: Record<DocumentType, DocumentTypeConfig> = {
     documentType: 'csa',
     displayName: 'Cloud Service Agreement',
     commonPaperUrl: 'https://commonpaper.com/standards/cloud-service-agreement/1.0/',
+    templateFile: 'CSA.md',
     fields: [
       ...COMMON_FIELDS,
       { key: 'providerName', label: 'Provider', required: true },
@@ -204,6 +207,7 @@ export const DOCUMENT_REGISTRY: Record<DocumentType, DocumentTypeConfig> = {
     documentType: 'design-partner',
     displayName: 'Design Partner Agreement',
     commonPaperUrl: 'https://commonpaper.com/standards/design-partner-agreement/1.0/',
+    templateFile: 'design-partner-agreement.md',
     fields: [
       ...COMMON_FIELDS,
       { key: 'programName', label: 'Program Name', required: true },
@@ -216,6 +220,7 @@ export const DOCUMENT_REGISTRY: Record<DocumentType, DocumentTypeConfig> = {
     documentType: 'sla',
     displayName: 'Service Level Agreement',
     commonPaperUrl: 'https://commonpaper.com/standards/service-level-agreement/1.0/',
+    templateFile: 'sla.md',
     fields: [
       ...COMMON_FIELDS,
       { key: 'uptimeTarget', label: 'Uptime Target', required: true },
@@ -228,6 +233,7 @@ export const DOCUMENT_REGISTRY: Record<DocumentType, DocumentTypeConfig> = {
     documentType: 'psa',
     displayName: 'Professional Services Agreement',
     commonPaperUrl: 'https://commonpaper.com/standards/professional-services-agreement/1.0/',
+    templateFile: 'psa.md',
     fields: [
       ...COMMON_FIELDS,
       { key: 'deliverables', label: 'Deliverables', required: true },
@@ -241,6 +247,7 @@ export const DOCUMENT_REGISTRY: Record<DocumentType, DocumentTypeConfig> = {
     documentType: 'dpa',
     displayName: 'Data Processing Agreement',
     commonPaperUrl: 'https://commonpaper.com/standards/data-processing-agreement/1.0/',
+    templateFile: 'DPA.md',
     fields: [
       ...COMMON_FIELDS,
       { key: 'dataSubjects', label: 'Data Subjects', required: true },
@@ -254,6 +261,7 @@ export const DOCUMENT_REGISTRY: Record<DocumentType, DocumentTypeConfig> = {
     documentType: 'software-license',
     displayName: 'Software License Agreement',
     commonPaperUrl: 'https://commonpaper.com/standards/software-license-agreement/1.0/',
+    templateFile: 'Software-License-Agreement.md',
     fields: [
       ...COMMON_FIELDS,
       { key: 'licensedSoftware', label: 'Licensed Software', required: true },
@@ -267,6 +275,7 @@ export const DOCUMENT_REGISTRY: Record<DocumentType, DocumentTypeConfig> = {
     documentType: 'partnership',
     displayName: 'Partnership Agreement',
     commonPaperUrl: 'https://commonpaper.com/standards/partnership-agreement/1.0/',
+    templateFile: 'Partnership-Agreement.md',
     fields: [
       ...COMMON_FIELDS,
       { key: 'partnershipScope', label: 'Partnership Scope', required: true },
@@ -279,6 +288,7 @@ export const DOCUMENT_REGISTRY: Record<DocumentType, DocumentTypeConfig> = {
     documentType: 'pilot',
     displayName: 'Pilot Agreement',
     commonPaperUrl: 'https://commonpaper.com/standards/pilot-agreement/1.0/',
+    templateFile: 'Pilot-Agreement.md',
     fields: [
       ...COMMON_FIELDS,
       { key: 'pilotPeriod', label: 'Pilot Period', required: true },
@@ -291,6 +301,7 @@ export const DOCUMENT_REGISTRY: Record<DocumentType, DocumentTypeConfig> = {
     documentType: 'baa',
     displayName: 'Business Associate Agreement',
     commonPaperUrl: 'https://commonpaper.com/standards/business-associate-agreement/1.0/',
+    templateFile: 'BAA.md',
     fields: [
       ...COMMON_FIELDS,
       { key: 'phiDescription', label: 'PHI Description', required: true },
@@ -303,6 +314,7 @@ export const DOCUMENT_REGISTRY: Record<DocumentType, DocumentTypeConfig> = {
     documentType: 'ai-addendum',
     displayName: 'AI Addendum',
     commonPaperUrl: 'https://commonpaper.com/standards/ai-addendum/1.0/',
+    templateFile: 'AI-Addendum.md',
     fields: [
       ...COMMON_FIELDS,
       { key: 'aiFeatures', label: 'AI Features', required: true },
@@ -389,6 +401,76 @@ export function generateCoverPage(data: DocumentFields, docType: DocumentType): 
   const p2 = data.party2 ?? {}
   lines.push('### Signatures')
   lines.push('')
+  lines.push('|  | Party 1 | Party 2 |')
+  lines.push('| :--- | :----: | :----: |')
+  lines.push('| Signature |  |  |')
+  lines.push(`| Print Name | ${escapePipe(p1.name)} | ${escapePipe(p2.name)} |`)
+  lines.push(`| Title | ${escapePipe(p1.title)} | ${escapePipe(p2.title)} |`)
+  lines.push(`| Company | ${escapePipe(p1.company)} | ${escapePipe(p2.company)} |`)
+  lines.push(`| Notice Address | ${escapePipe(p1.noticeAddress)} | ${escapePipe(p2.noticeAddress)} |`)
+  lines.push('| Date |  |  |')
+  lines.push('')
+  lines.push('---')
+  lines.push('')
+  lines.push(
+    `Common Paper ${config.displayName} free to use under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).`,
+  )
+
+  return lines.join('\n')
+}
+
+// ── Full document generation ──────────────────────────────────────────────────
+
+export function processTemplateContent(raw: string): string {
+  // Strip <span> tags, keeping inner text (e.g. coverpage_link, header spans)
+  const noSpans = raw.replace(/<span[^>]*>(.*?)<\/span>/g, '$1')
+  // Trim first, then remove the template's own leading "# ..." heading; we add our own section header
+  return noSpans.trim().replace(/^#\s+[^\n]*\n\n?/, '').trim()
+}
+
+export function generateDocument(
+  data: DocumentFields,
+  docType: DocumentType,
+  templateContent: string,
+): string {
+  const config = DOCUMENT_REGISTRY[docType]
+  const lines: string[] = []
+
+  lines.push(`# ${config.displayName}`)
+  lines.push('')
+  lines.push('---')
+  lines.push('')
+  lines.push('## Cover Page')
+  lines.push('')
+
+  for (const { key, label, isParty, format } of config.fields) {
+    if (isParty) continue
+    const raw = data[key]
+    if (raw === null || raw === undefined || raw === '') continue
+    const display = format ? format(raw, data) : String(raw)
+    lines.push(`### ${label}`)
+    lines.push('')
+    lines.push(escapeMarkdownText(display))
+    lines.push('')
+  }
+
+  lines.push('---')
+  lines.push('')
+  lines.push('## Standard Terms')
+  lines.push('')
+  lines.push(processTemplateContent(templateContent))
+  lines.push('')
+  lines.push('---')
+  lines.push('')
+  lines.push('## Signatures')
+  lines.push('')
+  lines.push(
+    `By signing this Cover Page, each party agrees to enter into this ${config.displayName} as of the Effective Date.`,
+  )
+  lines.push('')
+
+  const p1 = data.party1 ?? {}
+  const p2 = data.party2 ?? {}
   lines.push('|  | Party 1 | Party 2 |')
   lines.push('| :--- | :----: | :----: |')
   lines.push('| Signature |  |  |')

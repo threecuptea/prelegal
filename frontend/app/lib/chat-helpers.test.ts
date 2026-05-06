@@ -3,6 +3,8 @@ import {
   mergeDocumentFields,
   missingRequiredDocumentFields,
   generateCoverPage,
+  generateDocument,
+  processTemplateContent,
   DOCUMENT_REGISTRY,
   type DocumentFields,
 } from './document-types'
@@ -178,5 +180,107 @@ describe('generateCoverPage', () => {
   it('includes CC BY footer', () => {
     const output = generateCoverPage({}, 'dpa')
     expect(output).toContain('CC BY 4.0')
+  })
+})
+
+// ── processTemplateContent ────────────────────────────────────────────────────
+
+describe('processTemplateContent', () => {
+  it('strips coverpage_link span tags, keeping inner text', () => {
+    const input = 'See the <span class="coverpage_link">Purpose</span> field.'
+    expect(processTemplateContent(input)).toBe('See the Purpose field.')
+  })
+
+  it('strips header span tags', () => {
+    const input = '<span class="header_2" id="1">Definitions</span>\n\nSome text.'
+    expect(processTemplateContent(input)).toBe('Definitions\n\nSome text.')
+  })
+
+  it('removes a leading top-level # heading', () => {
+    const input = '# Standard Terms\n\nSection 1. Intro.'
+    expect(processTemplateContent(input)).toBe('Section 1. Intro.')
+  })
+
+  it('does not remove sub-level headings', () => {
+    const input = '## Sub Section\n\nContent.'
+    expect(processTemplateContent(input)).toContain('## Sub Section')
+  })
+
+  it('trims leading and trailing whitespace', () => {
+    const input = '\n\n# Title\n\nContent.\n\n'
+    expect(processTemplateContent(input)).toBe('Content.')
+  })
+})
+
+// ── generateDocument ──────────────────────────────────────────────────────────
+
+const SAMPLE_TEMPLATE = '# Standard Terms\n\n1. **Introduction**. This is the agreement.\n\nCommon Paper Version free to use under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).'
+
+describe('generateDocument', () => {
+  it('includes the document title', () => {
+    const output = generateDocument({}, 'mutual-nda', SAMPLE_TEMPLATE)
+    expect(output).toContain('# Mutual NDA')
+  })
+
+  it('includes a Cover Page section', () => {
+    const output = generateDocument({}, 'mutual-nda', SAMPLE_TEMPLATE)
+    expect(output).toContain('## Cover Page')
+  })
+
+  it('includes a Standard Terms section with processed template content', () => {
+    const output = generateDocument({}, 'mutual-nda', SAMPLE_TEMPLATE)
+    expect(output).toContain('## Standard Terms')
+    expect(output).toContain('1. **Introduction**')
+    // The template's own top-level heading should be stripped (only our ## heading remains)
+    expect(output).not.toMatch(/^# Standard Terms$/m)
+  })
+
+  it('includes a Signatures section at the bottom', () => {
+    const output = generateDocument({}, 'mutual-nda', SAMPLE_TEMPLATE)
+    expect(output).toContain('## Signatures')
+    const sigIdx = output.indexOf('## Signatures')
+    const termsIdx = output.indexOf('## Standard Terms')
+    expect(sigIdx).toBeGreaterThan(termsIdx)
+  })
+
+  it('includes the "By signing" statement in the Signatures section', () => {
+    const output = generateDocument({}, 'mutual-nda', SAMPLE_TEMPLATE)
+    expect(output).toContain(
+      'By signing this Cover Page, each party agrees to enter into this Mutual NDA as of the Effective Date.',
+    )
+  })
+
+  it('renders cover page fields above the standard terms', () => {
+    const data: DocumentFields = { purpose: 'Partnership evaluation', governingLaw: 'California' }
+    const output = generateDocument(data, 'mutual-nda', SAMPLE_TEMPLATE)
+    expect(output).toContain('### Purpose')
+    expect(output).toContain('Partnership evaluation')
+    const fieldsIdx = output.indexOf('### Purpose')
+    const termsIdx = output.indexOf('## Standard Terms')
+    expect(fieldsIdx).toBeLessThan(termsIdx)
+  })
+
+  it('renders party signature table after the standard terms', () => {
+    const data: DocumentFields = {
+      party1: { name: 'Alice Smith', company: 'Acme' },
+      party2: { name: 'Bob Jones', company: 'Beta' },
+    }
+    const output = generateDocument(data, 'mutual-nda', SAMPLE_TEMPLATE)
+    expect(output).toContain('Alice Smith')
+    expect(output).toContain('Bob Jones')
+    const sigIdx = output.indexOf('## Signatures')
+    const termsIdx = output.indexOf('## Standard Terms')
+    expect(sigIdx).toBeGreaterThan(termsIdx)
+  })
+
+  it('includes CC BY footer', () => {
+    const output = generateDocument({}, 'pilot', SAMPLE_TEMPLATE)
+    expect(output).toContain('CC BY 4.0')
+  })
+
+  it('does not include the external Full Standard Terms link', () => {
+    const output = generateDocument({}, 'mutual-nda', SAMPLE_TEMPLATE)
+    expect(output).not.toContain('Full Standard Terms')
+    expect(output).not.toContain('commonpaper.com/standards')
   })
 })

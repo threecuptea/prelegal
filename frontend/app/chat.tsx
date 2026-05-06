@@ -242,6 +242,7 @@ export default function Chat() {
   const router = useRouter()
   const [data, setData] = useState<DocumentFields>({})
   const [documentType, setDocumentType] = useState<DocumentType | null>(null)
+  const [templateContent, setTemplateContent] = useState<string | null>(null)
   const [messages, setMessages] = useState<UIMessage[]>(() => [buildGreeting()])
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
@@ -284,6 +285,19 @@ export default function Chat() {
       if (toastTimer.current) clearTimeout(toastTimer.current)
     }
   }, [])
+
+  // Fetch standard terms template whenever the document type is identified
+  useEffect(() => {
+    if (!documentType) return
+    let cancelled = false
+    const { templateFile } = DOCUMENT_REGISTRY[documentType]
+    setTemplateContent(null)
+    fetch(`/templates/${templateFile}`)
+      .then((res) => (res.ok ? res.text() : Promise.reject(res.status)))
+      .then((text) => { if (!cancelled) setTemplateContent(text) })
+      .catch(() => { if (!cancelled) setTemplateContent('') }) // '' = failed; download falls back to cover page only
+    return () => { cancelled = true }
+  }, [documentType])
 
   async function send() {
     const text = input.trim()
@@ -408,8 +422,8 @@ export default function Chat() {
   }
 
   async function saveAndPrint() {
-    await saveDocument()
-    window.print()
+    const ok = await saveDocument()
+    if (ok) window.print()
   }
 
   function reset() {
@@ -417,6 +431,7 @@ export default function Chat() {
     requestSeq.current++
     setData({})
     setDocumentType(null)
+    setTemplateContent(null)
     setSavedDocId(null)
     setMessages([buildGreeting()])
     setInput('')
@@ -448,7 +463,7 @@ export default function Chat() {
         )}
         <button
           type="button"
-          onClick={() => documentType && downloadMarkdown(data, documentType)}
+          onClick={() => documentType && downloadMarkdown(data, documentType, templateContent ?? undefined)}
           disabled={!canDownload}
           className="px-3 py-1.5 text-xs font-medium text-white rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
           style={{ backgroundColor: PURPLE }}
@@ -490,7 +505,11 @@ export default function Chat() {
           <div className="no-print">
             <FieldSummary data={data} documentType={documentType} />
           </div>
-          <DocumentPreview data={data} documentType={documentType} />
+          <DocumentPreview
+            data={data}
+            documentType={documentType}
+            templateContent={templateContent ?? undefined}
+          />
         </div>
       </main>
     </div>
