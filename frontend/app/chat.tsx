@@ -508,7 +508,7 @@ export default function Chat() {
           <DocumentPreview
             data={data}
             documentType={documentType}
-            templateContent={templateContent ?? undefined}
+            templateContent={templateContent}
           />
         </div>
       </main>

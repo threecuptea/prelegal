@@ -93,7 +93,7 @@ export function DocumentPreview({
 }: {
   data: DocumentFields
   documentType: DocumentType | null
-  templateContent?: string
+  templateContent?: string | null
 }) {
   if (!documentType) {
     return (
@@ -145,7 +145,7 @@ export function DocumentPreview({
         <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">
           Standard Terms
         </h3>
-        {templateContent === null ? (
+        {templateContent == null ? (
           <p className="text-xs italic text-gray-300">Loading standard terms…</p>
         ) : templateContent === '' ? (
           <p className="text-xs italic text-gray-400">Standard terms unavailable.</p>
