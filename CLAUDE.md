@@ -141,6 +141,14 @@ Backend available at http://localhost:8000
   - Today's date injected into `snapshot_summary` for all sessions (template and regular), enabling universal LLM warning when a confirmed `effectiveDate` is in the past.
   - `isEffectiveDateInPast(dateStr)` helper added to `document-types.ts` (with parse guard for malformed input).
   - Tests: 39 backend (added 4), 40 frontend (added 3), all passing.
+**PL-10** — Forgot and reset password (PR #12):
+  - "Forgot password?" link on the Sign In screen switches the auth card inline to an email-entry view (`Tab` extended to `'signin' | 'signup' | 'forgot'`). No new page needed for the forgot step.
+  - `POST /api/auth/forgot-password` — generates a `secrets.token_urlsafe(32)` token stored with a 1-hour expiry, sends a Resend email from `prelegal-no-reply@threecuptea.com`. Always returns 200 regardless of whether the email exists (anti-enumeration); email send failures are logged and swallowed.
+  - `POST /api/auth/reset-password` — validates token + expiry, updates `password_hash`, clears `reset_token`, resets `failed_attempts` and `locked` so previously-locked accounts regain access.
+  - `frontend/app/auth/reset-password/page.tsx` — new page reads `?token` via `useEffect`/`window.location.search` (static-export safe); new password + confirm fields; auto-redirects to `/auth` on success.
+  - DB migration: idempotent `ALTER TABLE account ADD COLUMN` adds `reset_token` and `reset_token_expires_at` to existing databases in `init_db()`.
+  - Requires `RESEND_API_KEY` and `APP_BASE_URL` in `.env` (`http://localhost:3000` dev, `http://localhost` Docker, production domain for prod).
+  - Tests: 46 backend (added 7), 40 frontend, all passing.
 - **PL-11** — User-provided document title with split Save / Print PDF actions (PR #13):
   - "Save & Print PDF" replaced by separate **Save** and **Print PDF** buttons; **Download .md** removed (legal docs are shared as PDF).
   - First save opens a naming modal pre-filled with a smart default: party companies › party names › purpose snippet (truncated to 40 chars) › "Type Draft" fallback. User can accept or edit.
@@ -156,6 +164,8 @@ Backend available at http://localhost:8000
 - `GET /api/health` → `{"status": "ok"}`
 - `POST /api/auth/signup` → `{access_token, token_type, email}` (201)
 - `POST /api/auth/signin` → `{access_token, token_type, email}` (401 bad creds, 423 locked)
+- `POST /api/auth/forgot-password` → `{message}` (200 always; sends reset email if account exists)
+- `POST /api/auth/reset-password` → `{message}` (200 success, 400 invalid/expired token, 422 short password)
 - `GET /api/documents` → `[{id, title, document_type, created_at, updated_at}]` (auth required)
 - `POST /api/documents` → `{id, title, document_type, fields, ...}` (auth required, 201)
 - `GET /api/documents/{id}` → `{id, title, document_type, fields, ...}` (auth required)

@@ -1004,6 +1004,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyjwt" },
     { name = "python-dotenv" },
+    { name = "resend" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -1021,6 +1022,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pyjwt", specifier = ">=2.10" },
     { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "resend", specifier = ">=2.30.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]
 
@@ -1404,6 +1406,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5f/a4/98b9c7c6428a668bf7e42ebb7c79d576a1c3c1e3ae2d47e674b468388871/requests-2.33.1.tar.gz", hash = "sha256:18817f8c57c6263968bc123d237e3b8b08ac046f5456bd1e307ee8f4250d3517", size = 134120, upload-time = "2026-03-30T16:09:15.531Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d7/8e/7540e8a2036f79a125c1d2ebadf69ed7901608859186c856fa0388ef4197/requests-2.33.1-py3-none-any.whl", hash = "sha256:4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a", size = 64947, upload-time = "2026-03-30T16:09:13.83Z" },
+]
+
+[[package]]
+name = "resend"
+version = "2.30.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d5/b5/dffc1acd852c708c48626d064a54c83acf0f6c8f097efc14e3b5c3a3ad99/resend-2.30.0.tar.gz", hash = "sha256:4c3c634316ad1a1fe7c5453afdd560c7d318ba18960149a8159f3bed334eb386", size = 43201, upload-time = "2026-05-04T16:23:43.203Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/92/05/c1114a7d29e0543d815cb9b5ac0f00b6ea7bb65507d952f2896d61acdc2b/resend-2.30.0-py2.py3-none-any.whl", hash = "sha256:a8993ad6be911b039f86d5853bb2b478cc2aa66c82f1829f0b1b2e0753cf09c4", size = 68388, upload-time = "2026-05-04T16:23:42.172Z" },
 ]
 
 [[package]]
