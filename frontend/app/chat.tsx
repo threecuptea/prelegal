@@ -360,10 +360,9 @@ export default function Chat() {
   async function handleModalConfirm() {
     const title = modalTitle.trim()
     if (!title || saving) return
-    const isFirstSave = savedDocId === null
     setShowSaveModal(false)
     const ok = await saveDocument(title)
-    if (ok && isFirstSave) printWithTitle(title)
+    if (ok) printWithTitle(title)
   }
 
   function handleModalCancel() {
