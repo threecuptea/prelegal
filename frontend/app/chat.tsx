@@ -339,13 +339,22 @@ export default function Chat() {
     }
   }
 
-  function handleSaveClick() {
+  function printWithTitle(title: string) {
+    const original = document.title
+    document.title = title
+    window.print()
+    window.addEventListener('afterprint', () => { document.title = original }, { once: true })
+  }
+
+  async function handleSaveClick() {
     if (!documentType) return
     if (savedDocId === null) {
       setModalTitle(generateDocumentTitle(data, documentType))
       setShowSaveModal(true)
     } else {
-      saveDocument(savedTitle ?? generateDocumentTitle(data, documentType))
+      const title = savedTitle ?? generateDocumentTitle(data, documentType)
+      const ok = await saveDocument(title)
+      if (ok) printWithTitle(title)
     }
   }
 
@@ -358,7 +367,8 @@ export default function Chat() {
     const title = modalTitle.trim()
     if (!title || saving) return
     setShowSaveModal(false)
-    await saveDocument(title)
+    const ok = await saveDocument(title)
+    if (ok) printWithTitle(title)
   }
 
   function handleModalCancel() {
@@ -366,10 +376,8 @@ export default function Chat() {
   }
 
   function handlePrint() {
-    const original = document.title
-    if (savedTitle) document.title = savedTitle
-    window.print()
-    window.addEventListener('afterprint', () => { document.title = original }, { once: true })
+    if (savedTitle) printWithTitle(savedTitle)
+    else window.print()
   }
 
   function reset() {
@@ -467,7 +475,7 @@ export default function Chat() {
           disabled={!canDownload}
           className="px-3 py-1.5 text-xs font-medium text-white bg-gray-800 rounded-md hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Print PDF
+          Print
         </button>
       </div>
 
