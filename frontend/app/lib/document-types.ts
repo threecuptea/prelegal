@@ -495,3 +495,26 @@ export function generateDocument(
 
   return lines.join('\n')
 }
+
+// ── Document title generation ─────────────────────────────────────────────────
+
+export function generateDocumentTitle(data: DocumentFields, docType: DocumentType): string {
+  const displayName = DOCUMENT_REGISTRY[docType].displayName
+  const p1Company = data.party1?.company?.trim()
+  const p2Company = data.party2?.company?.trim()
+  const p1Name = data.party1?.name?.trim()
+  const p2Name = data.party2?.name?.trim()
+  const purpose = data.purpose?.trim()
+
+  if (p1Company || p2Company) {
+    return `${displayName} — ${[p1Company, p2Company].filter(Boolean).join(' & ')}`
+  }
+  if (p1Name || p2Name) {
+    return `${displayName} — ${[p1Name, p2Name].filter(Boolean).join(' & ')}`
+  }
+  if (purpose) {
+    const truncated = purpose.length > 40 ? purpose.slice(0, 40).trimEnd() + '…' : purpose
+    return `${displayName} — ${truncated}`
+  }
+  return `${displayName} Draft`
+}

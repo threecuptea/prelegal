@@ -141,7 +141,7 @@ Backend available at http://localhost:8000
   - Today's date injected into `snapshot_summary` for all sessions (template and regular), enabling universal LLM warning when a confirmed `effectiveDate` is in the past.
   - `isEffectiveDateInPast(dateStr)` helper added to `document-types.ts` (with parse guard for malformed input).
   - Tests: 39 backend (added 4), 40 frontend (added 3), all passing.
-- **PL-10** — Forgot and reset password (PR #12):
+**PL-10** — Forgot and reset password (PR #12):
   - "Forgot password?" link on the Sign In screen switches the auth card inline to an email-entry view (`Tab` extended to `'signin' | 'signup' | 'forgot'`). No new page needed for the forgot step.
   - `POST /api/auth/forgot-password` — generates a `secrets.token_urlsafe(32)` token stored with a 1-hour expiry, sends a Resend email from `prelegal-no-reply@threecuptea.com`. Always returns 200 regardless of whether the email exists (anti-enumeration); email send failures are logged and swallowed.
   - `POST /api/auth/reset-password` — validates token + expiry, updates `password_hash`, clears `reset_token`, resets `failed_attempts` and `locked` so previously-locked accounts regain access.
@@ -149,6 +149,16 @@ Backend available at http://localhost:8000
   - DB migration: idempotent `ALTER TABLE account ADD COLUMN` adds `reset_token` and `reset_token_expires_at` to existing databases in `init_db()`.
   - Requires `RESEND_API_KEY` and `APP_BASE_URL` in `.env` (`http://localhost:3000` dev, `http://localhost` Docker, production domain for prod).
   - Tests: 46 backend (added 7), 40 frontend, all passing.
+- **PL-11** — User-provided document title with split Save / Print PDF actions (PR #13):
+  - "Save & Print PDF" replaced by separate **Save** and **Print PDF** buttons; **Download .md** removed (legal docs are shared as PDF).
+  - First save opens a naming modal pre-filled with a smart default: party companies › party names › purpose snippet (truncated to 40 chars) › "Type Draft" fallback. User can accept or edit.
+  - Re-save goes straight through with the stored title; **Rename…** button appears in the toolbar (only when a doc is already saved) to update the title via the same modal.
+  - Print PDF sets `document.title` to the saved title before opening the browser print dialog (so macOS Save As pre-fills the correct filename), then restores it via the `afterprint` event.
+  - `savedTitle` state tracks the confirmed title; populated on first save and on `?docId` hydration from `doc.title`. `handleUseAsTemplate` clears it.
+  - `generateDocumentTitle(data, docType)` added to `document-types.ts`.
+  - No backend changes needed (title field already existed).
+  - Disclaimer banner made more prominent: larger font (`text-sm font-semibold`), stronger yellow (`bg-yellow-100 border-yellow-300`).
+  - Tests: 39 backend (unchanged), 49 frontend (added 9), all passing.
 
 ### Current API Endpoints
 - `GET /api/health` → `{"status": "ok"}`
