@@ -11,6 +11,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "PyJWT>=2.10",
     "bcrypt>=4.0",
+    "resend>=2.30.0",
 ]
 
 [dependency-groups]

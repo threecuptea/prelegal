@@ -8,7 +8,7 @@ const NAVY = '#032147'
 const PURPLE = '#753991'
 const PURPLE_DARK = '#5e2c75'
 
-type Tab = 'signin' | 'signup'
+type Tab = 'signin' | 'signup' | 'forgot'
 
 export default function AuthPage() {
   const router = useRouter()
@@ -16,6 +16,7 @@ export default function AuthPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -23,6 +24,10 @@ export default function AuthPage() {
   }, [router])
 
   async function submit() {
+    if (tab === 'forgot') {
+      await submitForgot()
+      return
+    }
     if (!email || !password || loading) return
     setError(null)
     setLoading(true)
@@ -56,6 +61,30 @@ export default function AuthPage() {
     }
   }
 
+  async function submitForgot() {
+    if (!email || loading) return
+    setError(null)
+    setInfo(null)
+    setLoading(true)
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(body.detail ?? 'Something went wrong. Please try again.')
+        return
+      }
+      setInfo(body.message)
+    } catch {
+      setError('Network error — please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter') submit()
   }
@@ -63,8 +92,11 @@ export default function AuthPage() {
   function switchTab(t: Tab) {
     setTab(t)
     setError(null)
+    setInfo(null)
     setPassword('')
   }
+
+  const isForgot = tab === 'forgot'
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -79,29 +111,33 @@ export default function AuthPage() {
         <div className="w-full max-w-sm">
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8">
             <h2 className="text-xl font-bold mb-1" style={{ color: NAVY }}>
-              {tab === 'signin' ? 'Sign in' : 'Create account'}
+              {isForgot ? 'Reset password' : tab === 'signin' ? 'Sign in' : 'Create account'}
             </h2>
             <p className="text-sm text-gray-500 mb-6">
-              {tab === 'signin'
-                ? 'Welcome back. Sign in to access your documents.'
-                : 'Start drafting legal agreements with AI.'}
+              {isForgot
+                ? 'Enter your email and we'll send you a reset link.'
+                : tab === 'signin'
+                  ? 'Welcome back. Sign in to access your documents.'
+                  : 'Start drafting legal agreements with AI.'}
             </p>
 
-            <div className="flex mb-6 rounded-lg overflow-hidden border border-gray-200">
-              {(['signin', 'signup'] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                    tab === t ? 'text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-                  }`}
-                  style={tab === t ? { backgroundColor: PURPLE } : {}}
-                  onClick={() => switchTab(t)}
-                >
-                  {t === 'signin' ? 'Sign In' : 'Sign Up'}
-                </button>
-              ))}
-            </div>
+            {!isForgot && (
+              <div className="flex mb-6 rounded-lg overflow-hidden border border-gray-200">
+                {(['signin', 'signup'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                      tab === t ? 'text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                    style={tab === t ? { backgroundColor: PURPLE } : {}}
+                    onClick={() => switchTab(t)}
+                  >
+                    {t === 'signin' ? 'Sign In' : 'Sign Up'}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="space-y-4" onKeyDown={handleKeyDown}>
               <div>
@@ -116,18 +152,21 @@ export default function AuthPage() {
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={tab === 'signup' ? 'Min. 8 characters' : '••••••••'}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
+
+              {!isForgot && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={tab === 'signup' ? 'Min. 8 characters' : '••••••••'}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              )}
 
               {error && (
                 <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
@@ -135,10 +174,16 @@ export default function AuthPage() {
                 </div>
               )}
 
+              {info && (
+                <div className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">
+                  {info}
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={submit}
-                disabled={loading || !email || !password}
+                disabled={loading || !email || (!isForgot && !password)}
                 className="w-full py-2.5 text-sm font-semibold text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 style={{ backgroundColor: PURPLE }}
                 onMouseEnter={(e) =>
@@ -150,10 +195,32 @@ export default function AuthPage() {
               >
                 {loading
                   ? 'Please wait…'
-                  : tab === 'signin'
-                    ? 'Sign In'
-                    : 'Create Account'}
+                  : isForgot
+                    ? 'Send Reset Link'
+                    : tab === 'signin'
+                      ? 'Sign In'
+                      : 'Create Account'}
               </button>
+
+              {tab === 'signin' && (
+                <button
+                  type="button"
+                  onClick={() => switchTab('forgot')}
+                  className="w-full text-center text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  Forgot password?
+                </button>
+              )}
+
+              {isForgot && (
+                <button
+                  type="button"
+                  onClick={() => switchTab('signin')}
+                  className="w-full text-center text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  Back to Sign In
+                </button>
+              )}
             </div>
           </div>
 
