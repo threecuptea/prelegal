@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   DOCUMENT_REGISTRY,
   formatDate,
+  generateDocumentTitle,
   isEffectiveDateInPast,
   mergeDocumentFields,
   missingRequiredDocumentFields,
@@ -12,7 +13,7 @@ import {
   type DocumentFields,
   type DocumentType,
 } from './lib/document-types'
-import { DocumentPreview, downloadMarkdown } from './document-preview'
+import { DocumentPreview } from './document-preview'
 import { authFetch, getToken } from './lib/auth'
 import AppHeader from './components/app-header'
 import DisclaimerBanner from './components/disclaimer-banner'
@@ -162,6 +163,9 @@ export default function Chat() {
   const [isTemplateMode, setIsTemplateMode] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveToast, setSaveToast] = useState(false)
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [modalTitle, setModalTitle] = useState('')
+  const [savedTitle, setSavedTitle] = useState<string | null>(null)
 
   const abortRef = useRef<AbortController | null>(null)
   const requestSeq = useRef(0)
@@ -186,6 +190,7 @@ export default function Chat() {
         const doc = await res.json()
         setData((doc.fields as DocumentFields) ?? {})
         if (doc.document_type) setDocumentType(doc.document_type as DocumentType)
+        if (doc.title) setSavedTitle(doc.title)
       })
       .catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -280,14 +285,13 @@ export default function Chat() {
     }
   }
 
-  async function saveDocument(): Promise<boolean> {
+  async function saveDocument(title: string): Promise<boolean> {
     if (!documentType) return false
     const token = getToken()
     if (!token) {
       router.replace('/auth')
       return false
     }
-    const title = `${DOCUMENT_REGISTRY[documentType].displayName} Draft`
     setSaving(true)
     try {
       let ok = false
@@ -300,6 +304,7 @@ export default function Chat() {
         if (res.ok) {
           const doc = await res.json()
           setSavedDocId(doc.id)
+          setSavedTitle(title)
           window.history.replaceState({}, '', `?docId=${doc.id}`)
           ok = true
         } else {
@@ -312,6 +317,7 @@ export default function Chat() {
           body: JSON.stringify({ title, fields: data }),
         })
         if (res.ok) {
+          setSavedTitle(title)
           ok = true
         } else {
           setError('Save failed — please try again.')
@@ -333,9 +339,37 @@ export default function Chat() {
     }
   }
 
-  async function saveAndPrint() {
-    const ok = await saveDocument()
-    if (ok) window.print()
+  function handleSaveClick() {
+    if (!documentType) return
+    if (savedDocId === null) {
+      setModalTitle(generateDocumentTitle(data, documentType))
+      setShowSaveModal(true)
+    } else {
+      saveDocument(savedTitle ?? generateDocumentTitle(data, documentType))
+    }
+  }
+
+  function handleRenameClick() {
+    setModalTitle(savedTitle ?? generateDocumentTitle(data, documentType!))
+    setShowSaveModal(true)
+  }
+
+  async function handleModalConfirm() {
+    const title = modalTitle.trim()
+    if (!title || saving) return
+    setShowSaveModal(false)
+    await saveDocument(title)
+  }
+
+  function handleModalCancel() {
+    setShowSaveModal(false)
+  }
+
+  function handlePrint() {
+    const original = document.title
+    if (savedTitle) document.title = savedTitle
+    window.print()
+    window.addEventListener('afterprint', () => { document.title = original }, { once: true })
   }
 
   function reset() {
@@ -345,12 +379,14 @@ export default function Chat() {
     setDocumentType(null)
     setTemplateContent(null)
     setSavedDocId(null)
+    setSavedTitle(null)
     setIsTemplateMode(false)
     setMessages([buildGreeting()])
     setInput('')
     setIsSending(false)
     setIsComplete(false)
     setError(null)
+    setShowSaveModal(false)
     window.history.replaceState({}, '', '/')
   }
 
@@ -372,6 +408,7 @@ export default function Chat() {
     }
 
     setSavedDocId(null)
+    setSavedTitle(null)
     setIsTemplateMode(true)
     setIsComplete(false)
     setError(null)
@@ -403,24 +440,34 @@ export default function Chat() {
         {saveToast && (
           <span className="text-xs text-green-600 font-medium">Saved ✓</span>
         )}
+        {savedDocId !== null && (
+          <button
+            type="button"
+            onClick={handleRenameClick}
+            disabled={saving}
+            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Rename…
+          </button>
+        )}
         <button
           type="button"
-          onClick={() => documentType && downloadMarkdown(data, documentType, templateContent ?? undefined)}
-          disabled={!canDownload}
+          onClick={handleSaveClick}
+          disabled={!isComplete || saving}
           className="px-3 py-1.5 text-xs font-medium text-white rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
           style={{ backgroundColor: PURPLE }}
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = PURPLE_DARK)}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = PURPLE)}
         >
-          Download .md
+          {saving ? 'Saving…' : 'Save'}
         </button>
         <button
           type="button"
-          onClick={saveAndPrint}
-          disabled={!isComplete || saving}
+          onClick={handlePrint}
+          disabled={!canDownload}
           className="px-3 py-1.5 text-xs font-medium text-white bg-gray-800 rounded-md hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {saving ? 'Saving…' : 'Save & Print PDF'}
+          Print PDF
         </button>
       </div>
 
@@ -452,6 +499,55 @@ export default function Chat() {
           />
         </div>
       </main>
+
+      {showSaveModal && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+          onKeyDown={(e) => { if (e.key === 'Escape') handleModalCancel() }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="save-modal-title"
+            className="bg-white rounded-xl border border-gray-200 shadow-lg p-6 w-full max-w-sm mx-4"
+          >
+            <h2 id="save-modal-title" className="text-base font-semibold text-[#032147] mb-1">
+              {savedDocId === null ? 'Name your document' : 'Rename document'}
+            </h2>
+            <p className="text-xs text-gray-500 mb-4">
+              This title will appear in your My Documents list.
+            </p>
+            <input
+              type="text"
+              value={modalTitle}
+              onChange={(e) => setModalTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && modalTitle.trim() && !saving) handleModalConfirm() }}
+              autoFocus
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#209dd7] mb-4"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={handleModalCancel}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleModalConfirm}
+                disabled={!modalTitle.trim() || saving}
+                className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ backgroundColor: PURPLE }}
+                onMouseEnter={(e) => { if (!saving) e.currentTarget.style.backgroundColor = PURPLE_DARK }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = PURPLE }}
+              >
+                {saving ? 'Saving…' : (savedDocId === null ? 'Save' : 'Rename')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

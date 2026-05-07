@@ -4,11 +4,65 @@ import {
   missingRequiredDocumentFields,
   generateCoverPage,
   generateDocument,
+  generateDocumentTitle,
   processTemplateContent,
   isEffectiveDateInPast,
   DOCUMENT_REGISTRY,
   type DocumentFields,
 } from './document-types'
+
+// ── generateDocumentTitle ─────────────────────────────────────────────────────
+
+describe('generateDocumentTitle', () => {
+  it('uses both party companies when available', () => {
+    const data: DocumentFields = { party1: { company: 'Acme Corp' }, party2: { company: 'Beta Inc' } }
+    expect(generateDocumentTitle(data, 'mutual-nda')).toBe('Mutual NDA — Acme Corp & Beta Inc')
+  })
+
+  it('uses only the available company when one party has no company', () => {
+    const data: DocumentFields = { party1: { company: 'Acme Corp' } }
+    expect(generateDocumentTitle(data, 'mutual-nda')).toBe('Mutual NDA — Acme Corp')
+  })
+
+  it('falls back to party names when no companies are present', () => {
+    const data: DocumentFields = { party1: { name: 'Alice Smith' }, party2: { name: 'Bob Jones' } }
+    expect(generateDocumentTitle(data, 'mutual-nda')).toBe('Mutual NDA — Alice Smith & Bob Jones')
+  })
+
+  it('uses a single name when only one party name is present', () => {
+    const data: DocumentFields = { party1: { name: 'Alice Smith' } }
+    expect(generateDocumentTitle(data, 'csa')).toBe('Cloud Service Agreement — Alice Smith')
+  })
+
+  it('prefers company over name when both are present', () => {
+    const data: DocumentFields = { party1: { name: 'Alice', company: 'Acme Corp' }, party2: { name: 'Bob', company: 'Beta Inc' } }
+    expect(generateDocumentTitle(data, 'mutual-nda')).toBe('Mutual NDA — Acme Corp & Beta Inc')
+  })
+
+  it('falls back to purpose when no party info is present', () => {
+    const data: DocumentFields = { purpose: 'Evaluating a cloud partnership' }
+    expect(generateDocumentTitle(data, 'mutual-nda')).toBe('Mutual NDA — Evaluating a cloud partnership')
+  })
+
+  it('truncates purpose at 40 characters with ellipsis', () => {
+    const data: DocumentFields = { purpose: 'This is a very long purpose that exceeds the forty character limit' }
+    const result = generateDocumentTitle(data, 'mutual-nda')
+    expect(result).toContain('…')
+    const purposePart = result.replace('Mutual NDA — ', '')
+    expect(purposePart.length).toBeLessThanOrEqual(41) // 40 chars + ellipsis
+  })
+
+  it('does not truncate purpose that is exactly 40 characters', () => {
+    const data: DocumentFields = { purpose: '1234567890123456789012345678901234567890' }
+    const result = generateDocumentTitle(data, 'mutual-nda')
+    expect(result).not.toContain('…')
+  })
+
+  it('falls back to displayName Draft when no fields are present', () => {
+    expect(generateDocumentTitle({}, 'mutual-nda')).toBe('Mutual NDA Draft')
+    expect(generateDocumentTitle({}, 'csa')).toBe('Cloud Service Agreement Draft')
+  })
+})
 
 // ── isEffectiveDateInPast ────────────────────────────────────────────────────
 
