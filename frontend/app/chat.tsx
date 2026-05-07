@@ -346,16 +346,10 @@ export default function Chat() {
     window.addEventListener('afterprint', () => { document.title = original }, { once: true })
   }
 
-  async function handleSaveClick() {
+  function handleSaveClick() {
     if (!documentType) return
-    if (savedDocId === null) {
-      setModalTitle(generateDocumentTitle(data, documentType))
-      setShowSaveModal(true)
-    } else {
-      const title = savedTitle ?? generateDocumentTitle(data, documentType)
-      const ok = await saveDocument(title)
-      if (ok) printWithTitle(title)
-    }
+    setModalTitle(generateDocumentTitle(data, documentType))
+    setShowSaveModal(true)
   }
 
   function handleRenameClick() {
@@ -366,9 +360,10 @@ export default function Chat() {
   async function handleModalConfirm() {
     const title = modalTitle.trim()
     if (!title || saving) return
+    const isFirstSave = savedDocId === null
     setShowSaveModal(false)
     const ok = await saveDocument(title)
-    if (ok) printWithTitle(title)
+    if (ok && isFirstSave) printWithTitle(title)
   }
 
   function handleModalCancel() {
@@ -448,27 +443,28 @@ export default function Chat() {
         {saveToast && (
           <span className="text-xs text-green-600 font-medium">Saved ✓</span>
         )}
-        {savedDocId !== null && (
+        {savedDocId === null ? (
+          <button
+            type="button"
+            onClick={handleSaveClick}
+            disabled={!isComplete || saving}
+            className="px-3 py-1.5 text-xs font-medium text-white rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ backgroundColor: PURPLE }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = PURPLE_DARK)}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = PURPLE)}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        ) : (
           <button
             type="button"
             onClick={handleRenameClick}
             disabled={saving}
             className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Rename…
+            {saving ? 'Saving…' : 'Rename…'}
           </button>
         )}
-        <button
-          type="button"
-          onClick={handleSaveClick}
-          disabled={!isComplete || saving}
-          className="px-3 py-1.5 text-xs font-medium text-white rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ backgroundColor: PURPLE }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = PURPLE_DARK)}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = PURPLE)}
-        >
-          {saving ? 'Saving…' : 'Save'}
-        </button>
         <button
           type="button"
           onClick={handlePrint}
