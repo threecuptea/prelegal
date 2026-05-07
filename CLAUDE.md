@@ -141,6 +141,16 @@ Backend available at http://localhost:8000
   - Today's date injected into `snapshot_summary` for all sessions (template and regular), enabling universal LLM warning when a confirmed `effectiveDate` is in the past.
   - `isEffectiveDateInPast(dateStr)` helper added to `document-types.ts` (with parse guard for malformed input).
   - Tests: 39 backend (added 4), 40 frontend (added 3), all passing.
+- **PL-11** — User-provided document title with split Save / Print PDF actions (PR #13):
+  - "Save & Print PDF" replaced by separate **Save** and **Print PDF** buttons; **Download .md** removed (legal docs are shared as PDF).
+  - First save opens a naming modal pre-filled with a smart default: party companies › party names › purpose snippet (truncated to 40 chars) › "Type Draft" fallback. User can accept or edit.
+  - Re-save goes straight through with the stored title; **Rename…** button appears in the toolbar (only when a doc is already saved) to update the title via the same modal.
+  - Print PDF sets `document.title` to the saved title before opening the browser print dialog (so macOS Save As pre-fills the correct filename), then restores it via the `afterprint` event.
+  - `savedTitle` state tracks the confirmed title; populated on first save and on `?docId` hydration from `doc.title`. `handleUseAsTemplate` clears it.
+  - `generateDocumentTitle(data, docType)` added to `document-types.ts`.
+  - No backend changes needed (title field already existed).
+  - Disclaimer banner made more prominent: larger font (`text-sm font-semibold`), stronger yellow (`bg-yellow-100 border-yellow-300`).
+  - Tests: 39 backend (unchanged), 49 frontend (added 9), all passing.
 
 ### Current API Endpoints
 - `GET /api/health` → `{"status": "ok"}`
