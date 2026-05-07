@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date
 
 from fastapi import HTTPException
 from litellm import acompletion
@@ -124,6 +125,7 @@ CONVERSATION RULES:
 - Normalize values: ISO dates, correct Literal strings, integer years.
 - Do not re-ask fields already present in the snapshot. Acknowledge them and move on.
 - When input is ambiguous, ask a clarifying question rather than guessing.
+- Today's date is provided in the document state context. If the user provides or confirms an `effectiveDate` that is earlier than today, warn them clearly in `response` and ask whether they still intend to use that date before proceeding.
 
 FINISHING:
 When all required fields for the identified document type are filled, summarize what you have and ask: "Have I got everything right? Should I finalize the document?" Set `isComplete: true` only after the user explicitly confirms (e.g. "yes", "looks good", "finalize"). After confirmation, set `isComplete: true`, give a short closing message, and ask one final follow-on so the user is never left without a prompt.
@@ -136,8 +138,11 @@ CRITICAL: `response` must NEVER be empty or null. Every response must end with a
 
 def snapshot_summary(snapshot: ChatResponse | None) -> str:
     """Render the current document state for the second system message."""
+    today = date.today().isoformat()
+    header = f"Today's date: {today}\n"
+
     if snapshot is None:
-        return "No fields have been filled yet."
+        return header + "No fields have been filled yet."
 
     populated = {
         k: v
@@ -145,16 +150,28 @@ def snapshot_summary(snapshot: ChatResponse | None) -> str:
         if k not in _SNAPSHOT_EXCLUDED and v not in (None, "")
     }
     if not populated:
-        return "No fields have been filled yet."
-    return "Current document state:\n" + json.dumps(populated, indent=2)
+        return header + "No fields have been filled yet."
+    return header + "Current document state:\n" + json.dumps(populated, indent=2)
+
+
+_TEMPLATE_MODE_INSTRUCTION = (
+    "TEMPLATE MODE: The user is creating a new document based on an existing one as a starting "
+    "point. All fields in the snapshot above are pre-loaded defaults from that document. "
+    "Do NOT re-collect fields from scratch — instead ask which fields the user wants to change. "
+    "Common changes are effective date, party names, and specific terms. "
+    "Help the user modify only what they specify, and check the effectiveDate rule above."
+)
 
 
 def build_messages(request: ChatRequest) -> list[dict]:
-    return [
+    messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "system", "content": snapshot_summary(request.fields)},
-        *(m.model_dump() for m in request.messages),
     ]
+    if request.isTemplateMode:
+        messages.append({"role": "system", "content": _TEMPLATE_MODE_INSTRUCTION})
+    messages.extend(m.model_dump() for m in request.messages)
+    return messages
 
 
 async def call_llm(messages: list[dict]) -> ChatResponse:

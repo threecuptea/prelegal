@@ -134,6 +134,13 @@ Backend available at http://localhost:8000
   - `downloadMarkdown` filename drops `-cover` suffix (e.g. `Mutual-NDA.md`). `saveAndPrint` only opens print dialog when save succeeds.
   - Field Summary removed — redundant now that Cover Page is shown inline in the document preview.
   - Tests: 35 backend, 37 frontend (added 13), all passing.
+- **PL-9** — Use as Template (PR #11):
+  - "Use as Template" button appears at the top of the document preview panel when a saved document is loaded via `?docId`. Clicking it starts a fresh chat session with all existing fields pre-populated as defaults — the original saved document is unchanged.
+  - The AI opens with a locally-rendered message naming the document type and hinting at common fields to change (effective date, party 2, governing law). A past-date note is added inline if the template's `effectiveDate` is already in the past.
+  - `isTemplateMode` flag sent to backend on every turn; `build_messages` injects a focused system message telling the LLM to ask what to change rather than collect fields from scratch.
+  - Today's date injected into `snapshot_summary` for all sessions (template and regular), enabling universal LLM warning when a confirmed `effectiveDate` is in the past.
+  - `isEffectiveDateInPast(dateStr)` helper added to `document-types.ts` (with parse guard for malformed input).
+  - Tests: 39 backend (added 4), 40 frontend (added 3), all passing.
 
 ### Current API Endpoints
 - `GET /api/health` → `{"status": "ok"}`
@@ -144,6 +151,6 @@ Backend available at http://localhost:8000
 - `GET /api/documents/{id}` → `{id, title, document_type, fields, ...}` (auth required)
 - `PUT /api/documents/{id}` → updated document (auth required)
 - `DELETE /api/documents/{id}` → 204 (auth required)
-- `POST /api/chat` → AI chat for all 11 document types. Body: `{messages, fields}`. Response: flat `ChatResponse`.
+- `POST /api/chat` → AI chat for all 11 document types. Body: `{messages, fields, isTemplateMode?}`. Response: flat `ChatResponse`.
 - `GET /_next/*` → static Next.js bundle assets
 - `GET|HEAD /{path}` → static frontend (`/` chat, `/auth`, `/documents`; SPA fallback to `index.html`)

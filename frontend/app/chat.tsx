@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   DOCUMENT_REGISTRY,
+  formatDate,
+  isEffectiveDateInPast,
   mergeDocumentFields,
   missingRequiredDocumentFields,
   type ChatResponse,
@@ -157,6 +159,7 @@ export default function Chat() {
   const [isComplete, setIsComplete] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedDocId, setSavedDocId] = useState<number | null>(null)
+  const [isTemplateMode, setIsTemplateMode] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveToast, setSaveToast] = useState(false)
 
@@ -230,6 +233,7 @@ export default function Chat() {
         body: JSON.stringify({
           messages: nextMessages.map(({ role, content }) => ({ role, content })),
           fields: data,
+          isTemplateMode,
         }),
         signal: controller.signal,
       })
@@ -341,11 +345,41 @@ export default function Chat() {
     setDocumentType(null)
     setTemplateContent(null)
     setSavedDocId(null)
+    setIsTemplateMode(false)
     setMessages([buildGreeting()])
     setInput('')
     setIsSending(false)
     setIsComplete(false)
     setError(null)
+    window.history.replaceState({}, '', '/')
+  }
+
+  function handleUseAsTemplate() {
+    if (!documentType) return
+    abortRef.current?.abort()
+    requestSeq.current++
+
+    const docName = DOCUMENT_REGISTRY[documentType].displayName
+    let pastDateNote = ''
+    if (data.effectiveDate && isEffectiveDateInPast(data.effectiveDate)) {
+      pastDateNote = `\n\nNote: The effective date (${formatDate(data.effectiveDate)}) in this template is in the past — you'll want to update it.`
+    }
+
+    const openingMessage: UIMessage = {
+      id: nextMessageId(),
+      role: 'assistant',
+      content: `O.K. I've pre-loaded your existing ${docName} as a template. What fields would you like to change? For example, the effective date, party 2, or governing law?${pastDateNote}`,
+    }
+
+    setSavedDocId(null)
+    setIsTemplateMode(true)
+    setIsComplete(false)
+    setError(null)
+    setInput('')
+    setIsSending(false)
+    setMessages([openingMessage])
+    // templateContent intentionally kept: documentType is unchanged so the fetch
+    // useEffect won't re-fire, and clearing it would leave the preview blank.
     window.history.replaceState({}, '', '/')
   }
 
@@ -414,6 +448,7 @@ export default function Chat() {
             data={data}
             documentType={documentType}
             templateContent={templateContent}
+            onUseAsTemplate={savedDocId !== null ? handleUseAsTemplate : undefined}
           />
         </div>
       </main>

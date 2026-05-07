@@ -123,6 +123,13 @@ export function formatDate(dateStr: string | undefined): string {
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
+export function isEffectiveDateInPast(dateStr: string): boolean {
+  const d = new Date(dateStr + 'T00:00:00')
+  if (Number.isNaN(d.getTime())) return false
+  const today = new Date().toISOString().split('T')[0]
+  return dateStr < today
+}
+
 export function escapePipe(s: string | undefined): string {
   return (s ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ')
 }
