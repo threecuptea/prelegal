@@ -38,6 +38,16 @@ def init_db() -> None:
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_PATH) as conn:
         conn.executescript(_SCHEMA)
+        # Migrations: add columns that didn't exist in earlier schema versions.
+        for col_sql in [
+            "ALTER TABLE account ADD COLUMN reset_token TEXT",
+            "ALTER TABLE account ADD COLUMN reset_token_expires_at TEXT",
+        ]:
+            try:
+                conn.execute(col_sql)
+            except sqlite3.OperationalError:
+                pass  # column already exists
+        conn.commit()
 
 
 @contextmanager
