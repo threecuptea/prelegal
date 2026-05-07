@@ -115,7 +115,7 @@ export default function AuthPage() {
             </h2>
             <p className="text-sm text-gray-500 mb-6">
               {isForgot
-                ? 'Enter your email and we'll send you a reset link.'
+                ? "Enter your email and we'll send you a reset link."
                 : tab === 'signin'
                   ? 'Welcome back. Sign in to access your documents.'
                   : 'Start drafting legal agreements with AI.'}
