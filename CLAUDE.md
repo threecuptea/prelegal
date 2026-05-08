@@ -70,12 +70,12 @@ Backend available at http://localhost:8000
 3. Authenticated users land on `frontend/app/chat.tsx` (two-column: chat left, field summary + live preview right). Loading a saved document appends `?docId=<id>` to the URL; the chat hydrates fields from `GET /api/documents/<id>` on mount.
 4. Each user turn `POST /api/chat` sends the full conversation history plus the current `DocumentFields` snapshot (stateless). The `Authorization: Bearer <jwt>` header is sent on all API calls via `authFetch`.
 5. `backend/routes/chat.py` calls LiteLLM with `response_format=ChatResponse` (Pydantic structured output). Returns `{response, isComplete, documentType, suggestedDocument, ...fields}`.
-6. Frontend applies `mergeDocumentFields` to update state. The explicit **Save** button POSTs/PUTs to `/api/documents`.
+6. Frontend applies `mergeDocumentFields` to update state. The **Save** button (first save) opens a naming modal then POSTs to `/api/documents`; **Rename…** (subsequent saves) PUTs with the updated title and latest fields.
 
 ### Key files
 - `frontend/app/lib/document-types.ts` — `DocumentFields` interface, `DOCUMENT_REGISTRY` (all 11 doc types, each with `templateFile`), `mergeDocumentFields`, `missingRequiredDocumentFields`, `generateCoverPage` (cover page only, kept for tests), `processTemplateContent` (strips spans, removes leading heading), `generateDocument` (full self-contained doc: cover page → standard terms → signatures), escape utilities.
 - `frontend/app/lib/auth.ts` — `getToken/setToken/clearToken` (sessionStorage), `authFetch` (injects Bearer header, clears token + redirects on 401).
-- `frontend/app/chat.tsx` — unified chat UI with auth guard, Save button, `?docId` hydration, `AppHeader`, disclaimer banner. Fetches `/templates/{templateFile}` when document type is detected; passes `templateContent` to preview and download. No Field Summary — Cover Page in the document preview serves that purpose.
+- `frontend/app/chat.tsx` — unified chat UI with auth guard, Save/Rename…/Print toolbar, `?docId` hydration, `AppHeader`, disclaimer banner. Fetches `/templates/{templateFile}` when document type is detected; passes `templateContent` to preview. No Field Summary — Cover Page in the document preview serves that purpose.
 - `frontend/app/auth/page.tsx` — sign in / sign up page (new startup page).
 - `frontend/app/documents/page.tsx` — saved documents list with Load/Delete actions.
 - `frontend/app/components/app-header.tsx` — shared nav: logo, My Documents link, user email, Sign Out.
@@ -149,15 +149,19 @@ Backend available at http://localhost:8000
   - DB migration: idempotent `ALTER TABLE account ADD COLUMN` adds `reset_token` and `reset_token_expires_at` to existing databases in `init_db()`.
   - Requires `RESEND_API_KEY` and `APP_BASE_URL` in `.env` (`http://localhost:3000` dev, `http://localhost` Docker, production domain for prod).
   - Tests: 46 backend (added 7), 40 frontend, all passing.
-- **PL-11** — User-provided document title with split Save / Print PDF actions (PR #13):
-  - "Save & Print PDF" replaced by separate **Save** and **Print PDF** buttons; **Download .md** removed (legal docs are shared as PDF).
-  - First save opens a naming modal pre-filled with a smart default: party companies › party names › purpose snippet (truncated to 40 chars) › "Type Draft" fallback. User can accept or edit.
-  - Re-save goes straight through with the stored title; **Rename…** button appears in the toolbar (only when a doc is already saved) to update the title via the same modal.
-  - Print PDF sets `document.title` to the saved title before opening the browser print dialog (so macOS Save As pre-fills the correct filename), then restores it via the `afterprint` event.
-  - `savedTitle` state tracks the confirmed title; populated on first save and on `?docId` hydration from `doc.title`. `handleUseAsTemplate` clears it.
+- **PL-11** — User-provided document title; split Save / Rename / Print actions (PR #13):
+  - **Download .md** removed (legal docs are shared as PDF, not markdown).
+  - **"Save & Print PDF"** replaced by three context-aware toolbar buttons:
+    - **Save** (visible only before first save, enabled when `isComplete`): opens naming modal → saves to DB → print dialog opens so user can save PDF with the same filename.
+    - **Rename…** (replaces Save after first save): opens modal pre-filled with stored title → updates DB title + latest fields → print dialog opens so user can re-save PDF with the new filename. Keeping title consistent between DB and PDF is intentional — user can overwrite the old file.
+    - **Print** (always visible when `canDownload`, no DB interaction): opens print dialog with saved title pre-filled as filename via `document.title`; title restored via `afterprint` event.
+  - Naming modal: heading reads "Name your document" (first save) or "Rename document" (rename); Enter key confirms; Escape closes; `role="dialog"` + `aria-modal` for accessibility.
+  - Smart default title (first match wins): party companies → party names → purpose snippet (≤40 chars, truncated with `…`) → `"<Type> Draft"` fallback.
+  - `savedTitle` state tracks the confirmed DB title; populated on successful save and on `?docId` hydration from `doc.title`; cleared by `handleUseAsTemplate` and `reset`.
+  - `printWithTitle(title)` helper sets `document.title`, calls `window.print()`, restores via `afterprint`.
   - `generateDocumentTitle(data, docType)` added to `document-types.ts`.
-  - No backend changes needed (title field already existed).
-  - Disclaimer banner made more prominent: larger font (`text-sm font-semibold`), stronger yellow (`bg-yellow-100 border-yellow-300`).
+  - Disclaimer banner made more prominent: `text-sm font-semibold`, `bg-yellow-100 border-yellow-300 text-yellow-900`, `py-3`.
+  - No backend changes needed (title field already existed in DB).
   - Tests: 39 backend (unchanged), 49 frontend (added 9), all passing.
 
 ### Current API Endpoints
