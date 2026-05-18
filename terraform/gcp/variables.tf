@@ -65,4 +65,8 @@ variable "clerk_issuer" {
   default     = ""  # Not actually used but kept for backwards compatibility
 }
 
-
+variable "db_password" {
+  description = "Password for the Cloud SQL prelegal Postgres user"
+  type        = string
+  sensitive   = true
+}

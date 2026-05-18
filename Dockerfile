@@ -26,8 +26,6 @@ RUN uv sync --no-dev
 WORKDIR /app
 COPY --from=frontend-builder /app/frontend/out ./frontend/out
 
-ENV PRELEGAL_DB_PATH=/data/prelegal.db
-
 EXPOSE 8000
 
 WORKDIR /app/backend

@@ -13,12 +13,15 @@ client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def _setup(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+def _setup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-key")
     import db as db_module
 
-    monkeypatch.setattr(db_module, "DB_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setattr(db_module, "DATABASE_URL", "postgresql://prelegal:prelegal@localhost:5432/prelegal")
     db_module.init_db()
+    with db_module.get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE TABLE document, account RESTART IDENTITY CASCADE")
 
 
 def test_signup_happy_path() -> None:
@@ -144,10 +147,9 @@ def test_reset_password_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     # Retrieve the token directly from the DB
     import db as db_module
     with db_module.get_db() as conn:
-        row = conn.execute(
-            "SELECT reset_token FROM account WHERE email = ?", ("grace@example.com",)
-        ).fetchone()
-    token = row["reset_token"]
+        with conn.cursor() as cur:
+            cur.execute("SELECT reset_token FROM account WHERE email = %s", ("grace@example.com",))
+            token = cur.fetchone()["reset_token"]
 
     res = client.post(
         "/api/auth/reset-password", json={"token": token, "new_password": "newpassword99"}
@@ -176,15 +178,14 @@ def test_reset_password_expired_token_returns_400(monkeypatch: pytest.MonkeyPatc
     # Back-date the expiry in the DB to simulate an expired token
     import db as db_module
     with db_module.get_db() as conn:
-        row = conn.execute(
-            "SELECT reset_token FROM account WHERE email = ?", ("henry@example.com",)
-        ).fetchone()
-        token = row["reset_token"]
-        expired = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
-        conn.execute(
-            "UPDATE account SET reset_token_expires_at = ? WHERE email = ?",
-            (expired, "henry@example.com"),
-        )
+        with conn.cursor() as cur:
+            cur.execute("SELECT reset_token FROM account WHERE email = %s", ("henry@example.com",))
+            token = cur.fetchone()["reset_token"]
+            expired = datetime.now(timezone.utc) - timedelta(hours=2)
+            cur.execute(
+                "UPDATE account SET reset_token_expires_at = %s WHERE email = %s",
+                (expired, "henry@example.com"),
+            )
 
     res = client.post(
         "/api/auth/reset-password", json={"token": token, "new_password": "newpassword99"}
@@ -206,9 +207,9 @@ def test_reset_password_clears_lockout(monkeypatch: pytest.MonkeyPatch) -> None:
     client.post("/api/auth/forgot-password", json={"email": "iris@example.com"})
     import db as db_module
     with db_module.get_db() as conn:
-        token = conn.execute(
-            "SELECT reset_token FROM account WHERE email = ?", ("iris@example.com",)
-        ).fetchone()["reset_token"]
+        with conn.cursor() as cur:
+            cur.execute("SELECT reset_token FROM account WHERE email = %s", ("iris@example.com",))
+            token = cur.fetchone()["reset_token"]
 
     client.post(
         "/api/auth/reset-password", json={"token": token, "new_password": "brandnewpw"}

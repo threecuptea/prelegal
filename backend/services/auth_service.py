@@ -10,10 +10,13 @@ from typing import Optional
 
 import bcrypt
 import jwt
+import psycopg2.errors
 import resend
 from fastapi import Header, HTTPException
 
 from db import get_db
+
+logger = __import__("logging").getLogger(__name__)
 
 _JWT_ALGORITHM = "HS256"
 _JWT_EXPIRE_HOURS = 8
@@ -62,51 +65,52 @@ def _decode_token(token: str) -> dict:
 
 
 def _signup_sync(email: str, password_hash: str) -> dict:
-    import sqlite3 as _sqlite3
-
-    new_id = None
+    email = email.lower()
     try:
         with get_db() as conn:
-            cursor = conn.execute(
-                "INSERT INTO account (email, password_hash) VALUES (?, ?)",
-                (email, password_hash),
-            )
-            new_id = cursor.lastrowid
-    except _sqlite3.IntegrityError:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO account (email, password_hash) VALUES (%s, %s) RETURNING id",
+                    (email, password_hash),
+                )
+                new_id = cur.fetchone()["id"]
+    except psycopg2.errors.UniqueViolation:
         raise HTTPException(status_code=409, detail="Email already registered")
     return {"id": new_id, "email": email}
 
 
 def _signin_sync(email: str, password: str) -> dict:
-    # Accumulate outcome flags so we can raise AFTER the context commits the UPDATE.
+    email = email.lower()
     not_found = False
     is_locked = False
     wrong_password = False
     account: dict | None = None
 
     with get_db() as conn:
-        row = conn.execute(
-            "SELECT id, email, password_hash, failed_attempts, locked "
-            "FROM account WHERE email = ?",
-            (email,),
-        ).fetchone()
-        if not row:
-            not_found = True
-        elif row["locked"]:
-            is_locked = True
-        elif not verify_password(password, row["password_hash"]):
-            wrong_password = True
-            new_attempts = row["failed_attempts"] + 1
-            lock_flag = 1 if new_attempts >= _MAX_FAILED else 0
-            conn.execute(
-                "UPDATE account SET failed_attempts = ?, locked = ? WHERE id = ?",
-                (new_attempts, lock_flag, row["id"]),
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, email, password_hash, failed_attempts, locked "
+                "FROM account WHERE email = %s",
+                (email,),
             )
-        else:
-            conn.execute(
-                "UPDATE account SET failed_attempts = 0 WHERE id = ?", (row["id"],)
-            )
-            account = {"id": row["id"], "email": row["email"]}
+            row = cur.fetchone()
+            if not row:
+                not_found = True
+            elif row["locked"]:
+                is_locked = True
+            elif not verify_password(password, row["password_hash"]):
+                wrong_password = True
+                new_attempts = row["failed_attempts"] + 1
+                lock_flag = 1 if new_attempts >= _MAX_FAILED else 0
+                cur.execute(
+                    "UPDATE account SET failed_attempts = %s, locked = %s WHERE id = %s",
+                    (new_attempts, lock_flag, row["id"]),
+                )
+            else:
+                cur.execute(
+                    "UPDATE account SET failed_attempts = 0 WHERE id = %s", (row["id"],)
+                )
+                account = {"id": row["id"], "email": row["email"]}
 
     if is_locked:
         raise HTTPException(
@@ -119,10 +123,12 @@ def _signin_sync(email: str, password: str) -> dict:
 
 def _fetch_account_sync(account_id: int) -> dict | None:
     with get_db() as conn:
-        row = conn.execute(
-            "SELECT id, email, locked FROM account WHERE id = ?", (account_id,)
-        ).fetchone()
-        return dict(row) if row else None
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, email, locked FROM account WHERE id = %s", (account_id,)
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
 
 
 async def signup(email: str, password: str) -> dict:
@@ -134,14 +140,16 @@ async def signin(email: str, password: str) -> dict:
     return await asyncio.to_thread(_signin_sync, email, password)
 
 
-def _store_reset_token_sync(email: str, token: str, expires_at: str) -> bool:
+def _store_reset_token_sync(email: str, token: str, expires_at: datetime) -> bool:
     """Store reset token for the account. Returns True if account found."""
     with get_db() as conn:
-        conn.execute(
-            "UPDATE account SET reset_token = ?, reset_token_expires_at = ? WHERE email = ?",
-            (token, expires_at, email),
-        )
-        return conn.execute("SELECT changes()").fetchone()[0] > 0
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE account SET reset_token = %s, reset_token_expires_at = %s "
+                "WHERE email = %s",
+                (token, expires_at, email.lower()),
+            )
+            return cur.rowcount > 0
 
 
 def _send_reset_email_sync(to_email: str, reset_url: str) -> None:
@@ -167,31 +175,28 @@ def _send_reset_email_sync(to_email: str, reset_url: str) -> None:
 
 def _reset_password_sync(token: str, new_password_hash: str) -> None:
     with get_db() as conn:
-        row = conn.execute(
-            "SELECT id, reset_token_expires_at FROM account WHERE reset_token = ?",
-            (token,),
-        ).fetchone()
-        if not row:
-            raise HTTPException(status_code=400, detail="Invalid or expired reset link")
-        expires_at = datetime.fromisoformat(row["reset_token_expires_at"])
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-        if datetime.now(timezone.utc) > expires_at:
-            raise HTTPException(status_code=400, detail="Invalid or expired reset link")
-        conn.execute(
-            "UPDATE account SET password_hash = ?, reset_token = NULL, "
-            "reset_token_expires_at = NULL, failed_attempts = 0, locked = 0 "
-            "WHERE id = ?",
-            (new_password_hash, row["id"]),
-        )
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, reset_token_expires_at FROM account WHERE reset_token = %s",
+                (token,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+            if datetime.now(timezone.utc) > row["reset_token_expires_at"]:
+                raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+            cur.execute(
+                "UPDATE account SET password_hash = %s, reset_token = NULL, "
+                "reset_token_expires_at = NULL, failed_attempts = 0, locked = 0 "
+                "WHERE id = %s",
+                (new_password_hash, row["id"]),
+            )
 
 
 async def forgot_password(email: str) -> None:
     """Generate a reset token and email it. Always succeeds to prevent enumeration."""
     token = secrets.token_urlsafe(32)
-    expires_at = (
-        datetime.now(timezone.utc) + timedelta(hours=_RESET_TOKEN_EXPIRE_HOURS)
-    ).isoformat()
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=_RESET_TOKEN_EXPIRE_HOURS)
     found = await asyncio.to_thread(_store_reset_token_sync, email, token, expires_at)
     if found:
         base_url = os.environ.get("APP_BASE_URL", "http://localhost:3000")
@@ -199,7 +204,6 @@ async def forgot_password(email: str) -> None:
         try:
             await asyncio.to_thread(_send_reset_email_sync, email, reset_url)
         except Exception:
-            # Log but never propagate — surfacing a send failure reveals account existence
             logger.exception("Failed to send reset email to %s", email)
 
 

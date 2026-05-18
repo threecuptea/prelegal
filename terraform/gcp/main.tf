@@ -35,6 +35,57 @@ resource "google_project_service" "cloudbuild" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "cloudsql" {
+  service            = "sqladmin.googleapis.com"
+  disable_on_destroy = false
+}
+
+# Cloud SQL Postgres instance
+resource "google_sql_database_instance" "main" {
+  name             = "${var.service_name}-db"
+  database_version = "POSTGRES_15"
+  region           = var.region
+
+  settings {
+    tier = "db-f1-micro"
+    backup_configuration {
+      enabled = true
+    }
+  }
+
+  deletion_protection = false
+
+  depends_on = [google_project_service.cloudsql]
+}
+
+resource "google_sql_database" "prelegal" {
+  name     = "prelegal"
+  instance = google_sql_database_instance.main.name
+}
+
+resource "google_sql_user" "prelegal" {
+  name     = "prelegal"
+  instance = google_sql_database_instance.main.name
+  password = var.db_password
+}
+
+# Dedicated service account for Cloud Run
+resource "google_service_account" "cloud_run" {
+  account_id   = "${var.service_name}-sa"
+  display_name = "Prelegal Cloud Run Service Account"
+}
+
+resource "google_project_iam_member" "cloud_run_sql" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.cloud_run.email}"
+}
+
+locals {
+  db_connection_name = "${var.project_id}:${var.region}:${google_sql_database_instance.main.name}"
+  database_url       = "postgresql://prelegal:${var.db_password}@/prelegal?host=/cloudsql/${local.db_connection_name}"
+}
+
 # Configure Docker provider to use GCR
 provider "docker" {
   registry_auth {
@@ -89,13 +140,15 @@ resource "google_cloud_run_service" "app" {
 
   template {
     spec {
+      service_account_name = google_service_account.cloud_run.email
+
       containers {
         image = docker_image.app.name
 
         resources {
           limits = {
             cpu    = "1"
-            memory = "2Gi" # I don't know data mount will work
+            memory = "2Gi"
           }
         }
 
@@ -110,23 +163,28 @@ resource "google_cloud_run_service" "app" {
         }
 
         env {
-          name = "JWT_SECRET"
+          name  = "JWT_SECRET"
           value = var.jwt_secret
         }
 
         env {
-          name = "APP_BASE_URL"
+          name  = "APP_BASE_URL"
           value = var.app_base_url
         }
 
         env {
-          name = "CLERK_JWKS_URL"
+          name  = "CLERK_JWKS_URL"
           value = var.clerk_jwks_url
         }
 
         env {
-          name = "CLERK_ISSUER"
+          name  = "CLERK_ISSUER"
           value = var.clerk_issuer
+        }
+
+        env {
+          name  = "DATABASE_URL"
+          value = local.database_url
         }
 
         env {
@@ -147,8 +205,9 @@ resource "google_cloud_run_service" "app" {
 
     metadata {
       annotations = {
-        "autoscaling.knative.dev/minScale" = "0"
-        "autoscaling.knative.dev/maxScale" = "1"
+        "run.googleapis.com/cloudsql-instances" = local.db_connection_name
+        "autoscaling.knative.dev/minScale"      = "0"
+        "autoscaling.knative.dev/maxScale"      = "1"
       }
     }
   }
@@ -161,7 +220,10 @@ resource "google_cloud_run_service" "app" {
 
   depends_on = [
     google_project_service.cloudrun,
-    docker_registry_image.app
+    docker_registry_image.app,
+    google_sql_database.prelegal,
+    google_sql_user.prelegal,
+    google_project_iam_member.cloud_run_sql,
   ]
 }
 
