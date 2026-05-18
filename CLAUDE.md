@@ -1,4 +1,4 @@
-# CLAUDE.md
+# [](https://)[](https://)CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -9,6 +9,7 @@ Prelegal is a SaaS product that lets users draft legal agreements by chatting wi
 ## Development process
 
 When instructed to build a feature:
+
 1. Use your Atlassian tools to read the feature instructions from Jira
 2. Develop the feature - do not skip any step from the feature-dev 7 step process
 3. Thoroughly test the feature with unit tests and integration tests and fix any issues
@@ -17,6 +18,7 @@ When instructed to build a feature:
 ## Commands
 
 ### Backend (run from `backend/`)
+
 ```bash
 uv run pytest                        # run all backend tests
 uv run pytest tests/test_chat.py     # run a single test file
@@ -25,6 +27,7 @@ uv run uvicorn main:app --reload     # dev server on :8000
 ```
 
 ### Frontend (run from `frontend/`)
+
 ```bash
 npm run dev          # dev server on :3000 (hot reload, proxies /api to :8000)
 npm run build        # static export to frontend/out/
@@ -34,6 +37,7 @@ npm run lint         # eslint
 ```
 
 ### Docker (run from repo root)
+
 ```bash
 scripts/start-mac.sh   # docker compose up --build -d
 scripts/stop-mac.sh    # docker compose down
@@ -50,6 +54,7 @@ There is an OPENROUTER_API_KEY in the .env file in the project root.
 The entire project should be packaged into a Docker container.
 
 The backend is in `backend/` — a `uv` project (Python 3.12) using FastAPI. Put all routes under `backend/routes/` with the prefix convention:
+
 - `auth.py` → `/api/auth`
 - `chat.py` → `/api/chat`
 - `documents.py` → `/api/documents`
@@ -65,6 +70,7 @@ Backend available at http://localhost:8000
 ## Architecture
 
 ### Request flow
+
 1. Browser loads the statically-exported Next.js SPA from FastAPI (`GET /`).
 2. Unauthenticated users are redirected to `/auth` (sign in / sign up). JWT is stored in `sessionStorage`.
 3. Authenticated users land on `frontend/app/chat.tsx` (two-column: chat left, field summary + live preview right). Loading a saved document appends `?docId=<id>` to the URL; the chat hydrates fields from `GET /api/documents/<id>` on mount.
@@ -73,6 +79,7 @@ Backend available at http://localhost:8000
 6. Frontend applies `mergeDocumentFields` to update state. The **Save** button (first save) opens a naming modal then POSTs to `/api/documents`; **Rename…** (subsequent saves) PUTs with the updated title and latest fields.
 
 ### Key files
+
 - `frontend/app/lib/document-types.ts` — `DocumentFields` interface, `DOCUMENT_REGISTRY` (all 11 doc types, each with `templateFile`), `mergeDocumentFields`, `missingRequiredDocumentFields`, `generateCoverPage` (cover page only, kept for tests), `processTemplateContent` (strips spans, removes leading heading), `generateDocument` (full self-contained doc: cover page → standard terms → signatures), escape utilities.
 - `frontend/app/lib/auth.ts` — `getToken/setToken/clearToken` (sessionStorage), `authFetch` (injects Bearer header, clears token + redirects on 401).
 - `frontend/app/chat.tsx` — unified chat UI with auth guard, Save/Rename…/Print toolbar, `?docId` hydration, `AppHeader`, disclaimer banner. Fetches `/templates/{templateFile}` when document type is detected; passes `templateContent` to preview. No Field Summary — Cover Page in the document preview serves that purpose.
@@ -95,9 +102,11 @@ Backend available at http://localhost:8000
 - `backend/main.py` — loads `.env`, lifespan calls `init_db()`, registers all routers, SPA fallback.
 
 ### Routing guard
+
 `/api/*` paths in the catch-all raise 404 so API routers are never shadowed by the static file handler.
 
 ## Color Scheme
+
 - Accent Yellow: `#ecad0a`
 - Blue Primary: `#209dd7`
 - Purple Secondary: `#753991` (submit buttons)
@@ -107,26 +116,31 @@ Backend available at http://localhost:8000
 ## Implementation Status
 
 ### Completed
+
 - **PL-2** — CommonPaper legal document templates and `catalog.json` (12 documents in `templates/`).
 - **PL-3** — Next.js 16 + React 19 + Tailwind 4 Mutual NDA Creator. Vitest unit tests in `frontend/app/lib/`.
 - **PL-4** — V1 technical foundation: static export, FastAPI backend, Docker, scripts.
 - **PL-5** — AI chat for Mutual NDA:
+
   - Frontend: `nda-chat.tsx` two-column layout (chat + field summary + live preview). `nda-form.tsx` removed; `NDAPreview`/`downloadMarkdown` extracted to `nda-preview.tsx`. `AbortController`-based cancellation on "Start over".
   - Backend: stateless `POST /api/chat` calling LiteLLM with structured output. Returns 503 if `OPENROUTER_API_KEY` unset, 502 on upstream/parse errors.
   - Tests: 9 backend pytest cases (`backend/tests/test_chat.py`, LiteLLM monkeypatched); Vitest suite in `frontend/app/lib/nda-chat-helpers.test.ts`. Full suite: 16 backend, 45 frontend.
 - **PL-6** — Expanded AI chat to all 11 Common Paper document types:
+
   - Single unified chat at `/` — AI detects document type conversationally in the first 1-2 turns.
   - Backend: flat `ChatResponse` Pydantic model (both LLM structured-output schema and API response) with all document-type fields as optionals plus `documentType`, `suggestedDocument`, `isComplete`. Moved to `backend/models/chat.py`. Business logic (system prompt, snapshot summary, LLM call) in `backend/services/chat_service.py`. Route thinned to API-key guard + service delegation.
   - Frontend: `frontend/app/lib/document-types.ts` is the central registry — `DOCUMENT_REGISTRY` keyed by `DocumentType` slug, generic `mergeDocumentFields` (with party shallow-merge), `missingRequiredDocumentFields`, `generateCoverPage` (cover page only; standard terms linked to Common Paper URL). `chat.tsx` replaces `nda-chat.tsx`; state is `DocumentFields = {}` plus `documentType: DocumentType | null`. `document-preview.tsx` replaces `nda-preview.tsx` with generic `DocumentPreview`.
   - Deleted: `nda-chat.tsx`, `nda-preview.tsx`, `lib/nda-document.ts`, `lib/nda-chat-helpers.ts`.
   - Tests: 19 backend, 23 frontend, all passing; clean static export.
 - **PL-7** — Multi-user auth, document persistence, and UI polish:
+
   - Auth: `POST /api/auth/signup` and `/signin` (bcrypt + PyJWT HS256, sessionStorage). Account locks after 5 failed attempts (HTTP 423).
   - Documents: `GET/POST /api/documents`, `GET/PUT/DELETE /api/documents/{id}`. All JWT-protected. Fields stored as JSON blob; ownership enforced by `account_id`.
   - Persistence: SQLite DB at `/data/prelegal.db` in Docker (named volume `prelegal-data`).
   - Frontend: `/auth` sign-in/sign-up page (new startup page), `/documents` saved docs list, chat updated with auth guard, Save button, `?docId` hydration, `AppHeader`, disclaimer banner.
   - Tests: 35 backend (added 16), 23 frontend, all passing.
 - **PL-8** — Self-contained document generation (PR #10):
+
   - Full Common Paper standard terms now embedded in the live preview, downloaded `.md`, and print PDF for all 11 document types. Previously only a link to commonpaper.com was shown.
   - Document structure: Cover Page fields → Standard Terms (from `frontend/public/templates/`) → Signatures with "By signing this Cover Page…" statement at the bottom.
   - `processTemplateContent` strips `<span>` tags and the template's own leading heading before embedding. `generateDocument` produces the complete self-contained markdown; `generateCoverPage` kept for backward compatibility.
@@ -135,13 +149,14 @@ Backend available at http://localhost:8000
   - Field Summary removed — redundant now that Cover Page is shown inline in the document preview.
   - Tests: 35 backend, 37 frontend (added 13), all passing.
 - **PL-9** — Use as Template (PR #11):
+
   - "Use as Template" button appears at the top of the document preview panel when a saved document is loaded via `?docId`. Clicking it starts a fresh chat session with all existing fields pre-populated as defaults — the original saved document is unchanged.
   - The AI opens with a locally-rendered message naming the document type and hinting at common fields to change (effective date, party 2, governing law). A past-date note is added inline if the template's `effectiveDate` is already in the past.
   - `isTemplateMode` flag sent to backend on every turn; `build_messages` injects a focused system message telling the LLM to ask what to change rather than collect fields from scratch.
   - Today's date injected into `snapshot_summary` for all sessions (template and regular), enabling universal LLM warning when a confirmed `effectiveDate` is in the past.
   - `isEffectiveDateInPast(dateStr)` helper added to `document-types.ts` (with parse guard for malformed input).
   - Tests: 39 backend (added 4), 40 frontend (added 3), all passing.
-**PL-10** — Forgot and reset password (PR #12):
+    **PL-10** — Forgot and reset password (PR #12):
   - "Forgot password?" link on the Sign In screen switches the auth card inline to an email-entry view (`Tab` extended to `'signin' | 'signup' | 'forgot'`). No new page needed for the forgot step.
   - `POST /api/auth/forgot-password` — generates a `secrets.token_urlsafe(32)` token stored with a 1-hour expiry, sends a Resend email from `prelegal-no-reply@threecuptea.com`. Always returns 200 regardless of whether the email exists (anti-enumeration); email send failures are logged and swallowed.
   - `POST /api/auth/reset-password` — validates token + expiry, updates `password_hash`, clears `reset_token`, resets `failed_attempts` and `locked` so previously-locked accounts regain access.
@@ -150,6 +165,7 @@ Backend available at http://localhost:8000
   - Requires `RESEND_API_KEY` and `APP_BASE_URL` in `.env` (`http://localhost:3000` dev, `http://localhost` Docker, production domain for prod).
   - Tests: 46 backend (added 7), 40 frontend, all passing.
 - **PL-11** — User-provided document title; split Save / Rename / Print actions (PR #13):
+
   - **Download .md** removed (legal docs are shared as PDF, not markdown).
   - **"Save & Print PDF"** replaced by three context-aware toolbar buttons:
     - **Save** (visible only before first save, enabled when `isComplete`): opens naming modal → saves to DB → print dialog opens so user can save PDF with the same filename.
@@ -163,8 +179,22 @@ Backend available at http://localhost:8000
   - Disclaimer banner made more prominent: `text-sm font-semibold`, `bg-yellow-100 border-yellow-300 text-yellow-900`, `py-3`.
   - No backend changes needed (title field already existed in DB).
   - Tests: 39 backend (unchanged), 49 frontend (added 9), all passing.
+- **PL-12** Automate the production deployment with Iac Terraform and also add domain to the service url
 
-### Current API Endpoints
+  - Add Terraform to automate the deployment to Cloud Run in GCP.   Cloud Run is a service for the cost-effective serverless container deployment. Prelegal built as docker image is ready for that.
+  - Copy from tf files `terraform/gcp` folder of `cyber` project as the template plus terraform.tfvars so that it can be fully automated.  Make adjustment to project_id and environment variables etc.
+  - `terraform apply` created 8 services, including `cloudbuild`, `artifactregistry` and `cloudrun`
+    and terraform output servive_url [Prelegal cloud ](https://preleagl-300878348607.us-central1.run.app)
+  - For most modern cloud platforms and hosting providers, redeploying an existing service won't change service URL. However, adding a domain to the cloud run service URL make `prelegal` look more professional and can be used in password reset too.
+  - `Cloud Run` can not be attached to a static IP address and its associated domain due to its serverless nature. Other than a static IP and a new DNS record, a load balancer and SSL certification are also needed.
+  - I reference [Set up a classic Application Load Balancer with Cloud Run, App Engine, or Cloud Run functions](https://docs.cloud.google.com/load-balancing/docs/https/setting-up-https-serverless#creating_the) and [Use Google-managed SSL certificates](https://docs.cloud.google.com/load-balancing/docs/ssl-certificates/google-managed-certs) and tried twice to get it work.
+  - There are interdepencies among those 4 components. The key points:
+    Load balancer frontend has its own IP address.  A `A` type of DNS record with a prefix (`prelegal` in this case) need to be added to and associated with the Load Balancer IP address instead of the static IP address configured in VPC network.
+    Howeverr, the static IP address is need and used by Load balancer frontend forwarding rule.
+    a SSL certificate managed by Google is added and required by the load balancer backend HTTPS.  However, the status of the SSL certificate won't become ACTIVE until the link of the specified domain DNS and the IP address of the load balancer is established (proprogated) and it is O.K. to attach a SSL certificate of a PROVISIONING status to a load balacer.  You might see `FAILED-NOT_VISIBLE` error too. That will go away when the link of the specified domain DNS and the IP address of the load balancer is established (proprogated)
+  - The correct order: configure a static IP, a SSL certificate, a load balancer in GCP and a DNS record in the domain hosting site following the instructions.
+  - The end result is [Prelegal Service](https://prelegal.threecuptea.com/)
+  ### Current API Endpoints
 - `GET /api/health` → `{"status": "ok"}`
 - `POST /api/auth/signup` → `{access_token, token_type, email}` (201)
 - `POST /api/auth/signin` → `{access_token, token_type, email}` (401 bad creds, 423 locked)

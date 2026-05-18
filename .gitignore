@@ -91,3 +91,24 @@ docker-compose.override.yml
 *.cert
 tmp/
 .tmp/
+
+.terraform/
+terraform.tfstate.d/
+*.tfstate
+
+# Terraform files
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# Variable files that might contain secrets
+*.auto.tfvars
+terraform.tfvars
+
+# IDEA
+*.iml
+.idea/
+*.iws
+
+#Exceptions
+memory
