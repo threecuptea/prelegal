@@ -179,16 +179,6 @@ Backend available at http://localhost:8000
   - Disclaimer banner made more prominent: `text-sm font-semibold`, `bg-yellow-100 border-yellow-300 text-yellow-900`, `py-3`.
   - No backend changes needed (title field already existed in DB).
   - Tests: 39 backend (unchanged), 49 frontend (added 9), all passing.
-- **PL-13** — Migrate from SQLite to Cloud SQL Postgres for persistent GCP storage (PR #15):
-  - `backend/db.py`: replaced sqlite3 with psycopg2. `DATABASE_URL` env var. `_connect_kwargs()` manually parses `?host=` query param so Cloud SQL Unix socket works with psycopg2 (which ignores that param in its URL parser). `row_to_dict()` serializes TIMESTAMPTZ datetimes to ISO strings.
-  - `backend/services/auth_service.py` + `document_service.py`: explicit cursors, `%s` placeholders, `RETURNING *` on INSERT/UPDATE (no redundant SELECT), `NOW()`, `psycopg2.errors.UniqueViolation`, email lowercased on all inserts and queries.
-  - `backend/pyproject.toml`: `psycopg2-binary>=2.9` added.
-  - `docker-compose.yaml`: `postgres:15` service with `pg_isready` healthcheck; `prelegal` service `depends_on: condition: service_healthy`; removed `prelegal-data` SQLite volume.
-  - `Dockerfile`: removed `ENV PRELEGAL_DB_PATH`.
-  - `terraform/gcp/main.tf`: Cloud SQL Postgres 15 (`db-f1-micro`), dedicated Cloud Run service account with `roles/cloudsql.client`, `run.googleapis.com/cloudsql-instances` annotation, `DATABASE_URL` env var, `replace_triggered_by` on IAM member (eliminates 403 window when Cloud Run is replaced).
-  - `terraform/gcp/variables.tf`: `db_password` variable added.
-  - Backend tests: monkeypatch `DATABASE_URL` + `TRUNCATE … RESTART IDENTITY CASCADE` per test. 46 backend, 49 frontend, all passing.
-  - **Deployment note**: when redeploying Cloud Run, always replace `docker_image.app` + `docker_registry_image.app` + `google_cloud_run_service.app` together to ensure the new image is built. A plain `-replace="google_cloud_run_service.app"` reuses the cached image.
 - **PL-12** Automate the production deployment with Iac Terraform and also add domain to the service url
   - Add Terraform to automate the deployment to Cloud Run in GCP.   Cloud Run is a service for the cost-effective serverless container deployment. Prelegal built as docker image is ready for that.
   - Copy from tf files `terraform/gcp` folder of `cyber` project as the template plus terraform.tfvars so that it can be fully automated.  Make adjustment to project_id and environment variables etc.
@@ -203,6 +193,16 @@ Backend available at http://localhost:8000
     a SSL certificate managed by Google is added and required by the load balancer backend HTTPS.  However, the status of the SSL certificate won't become ACTIVE until the link of the specified domain DNS and the IP address of the load balancer is established (proprogated) and it is O.K. to attach a SSL certificate of a PROVISIONING status to a load balacer.  You might see `FAILED-NOT_VISIBLE` error too. That will go away when the link of the specified domain DNS and the IP address of the load balancer is established (proprogated)
   - The correct order: configure a static IP, a SSL certificate, a load balancer in GCP and a DNS record in the domain hosting site following the instructions.
   - The end result is [Prelegal Service](https://prelegal.threecuptea.com/)
+  **PL-13** — Migrate from SQLite to Cloud SQL Postgres for persistent GCP storage (PR #15):
+  - `backend/db.py`: replaced sqlite3 with psycopg2. `DATABASE_URL` env var. `_connect_kwargs()` manually parses `?host=` query param so Cloud SQL Unix socket works with psycopg2 (which ignores that param in its URL parser). `row_to_dict()` serializes TIMESTAMPTZ datetimes to ISO strings.
+  - `backend/services/auth_service.py` + `document_service.py`: explicit cursors, `%s` placeholders, `RETURNING *` on INSERT/UPDATE (no redundant SELECT), `NOW()`, `psycopg2.errors.UniqueViolation`, email lowercased on all inserts and queries.
+  - `backend/pyproject.toml`: `psycopg2-binary>=2.9` added.
+  - `docker-compose.yaml`: `postgres:15` service with `pg_isready` healthcheck; `prelegal` service `depends_on: condition: service_healthy`; removed `prelegal-data` SQLite volume.
+  - `Dockerfile`: removed `ENV PRELEGAL_DB_PATH`.
+  - `terraform/gcp/main.tf`: Cloud SQL Postgres 15 (`db-f1-micro`), dedicated Cloud Run service account with `roles/cloudsql.client`, `run.googleapis.com/cloudsql-instances` annotation, `DATABASE_URL` env var, `replace_triggered_by` on IAM member (eliminates 403 window when Cloud Run is replaced).
+  - `terraform/gcp/variables.tf`: `db_password` variable added.
+  - Backend tests: monkeypatch `DATABASE_URL` + `TRUNCATE … RESTART IDENTITY CASCADE` per test. 46 backend, 49 frontend, all passing.
+  - **Deployment note**: when redeploying Cloud Run, always replace `docker_image.app` + `docker_registry_image.app` + `google_cloud_run_service.app` together to ensure the new image is built. A plain `-replace="google_cloud_run_service.app"` reuses the cached image.
   ### Current API Endpoints
 - `GET /api/health` → `{"status": "ok"}`
 - `POST /api/auth/signup` → `{access_token, token_type, email}` (201)
