@@ -3,6 +3,9 @@
 # Stage 1: Build the Next.js static export.
 FROM node:20-alpine AS frontend-builder
 
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+
 WORKDIR /app/frontend
 
 COPY frontend/package*.json ./

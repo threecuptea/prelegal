@@ -1,24 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { clearToken, getEmail } from '../lib/auth'
+import { useUser, SignOutButton } from '@clerk/clerk-react'
 
 const NAVY = '#032147'
 
 export default function AppHeader() {
-  const router = useRouter()
-  const [email, setEmail] = useState<string | null>(null)
-
-  useEffect(() => {
-    setEmail(getEmail())
-  }, [])
-
-  function signOut() {
-    clearToken()
-    router.replace('/auth')
-  }
+  const { user } = useUser()
+  const email = user?.primaryEmailAddress?.emailAddress ?? null
 
   return (
     <header className="no-print bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-4">
@@ -37,13 +26,14 @@ export default function AppHeader() {
       >
         My Documents
       </Link>
-      <button
-        type="button"
-        onClick={signOut}
-        className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 shrink-0"
-      >
-        Sign Out
-      </button>
+      <SignOutButton redirectUrl="/auth">
+        <button
+          type="button"
+          className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 shrink-0"
+        >
+          Sign Out
+        </button>
+      </SignOutButton>
     </header>
   )
 }

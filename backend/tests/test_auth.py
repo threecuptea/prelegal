@@ -1,228 +1,112 @@
-"""Tests for signup, signin, and forgot/reset password endpoints."""
+"""Tests for Clerk-based auth: account provisioning and JWT guard behavior."""
 
 from __future__ import annotations
-from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from fastapi_clerk_auth import HTTPAuthorizationCredentials as ClerkCreds
 
+import db as db_module
 from main import app
 from services import auth_service as auth_module
+from services.auth_service import clerk_guard, get_current_account
 
 client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def _setup(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-key")
-    import db as db_module
-
+def _setup(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(db_module, "DATABASE_URL", "postgresql://prelegal:prelegal@localhost:5432/prelegal")
     db_module.init_db()
     with db_module.get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("TRUNCATE TABLE document, account RESTART IDENTITY CASCADE")
+    yield
+    app.dependency_overrides.pop(clerk_guard, None)
+    app.dependency_overrides.pop(get_current_account, None)
 
 
-def test_signup_happy_path() -> None:
-    res = client.post(
-        "/api/auth/signup", json={"email": "alice@example.com", "password": "password123"}
+# ── Old auth routes are gone ──────────────────────────────────────────────────
+
+def test_signup_route_is_gone() -> None:
+    res = client.post("/api/auth/signup", json={"email": "x@example.com", "password": "secret123"})
+    assert res.status_code in (404, 405)
+
+
+def test_signin_route_is_gone() -> None:
+    res = client.post("/api/auth/signin", json={"email": "x@example.com", "password": "secret123"})
+    assert res.status_code in (404, 405)
+
+
+def test_forgot_password_route_is_gone() -> None:
+    res = client.post("/api/auth/forgot-password", json={"email": "x@example.com"})
+    assert res.status_code in (404, 405)
+
+
+def test_reset_password_route_is_gone() -> None:
+    res = client.post("/api/auth/reset-password", json={"token": "tok", "new_password": "newpass1"})
+    assert res.status_code in (404, 405)
+
+
+# ── Account upsert logic ──────────────────────────────────────────────────────
+
+def test_upsert_creates_account_on_first_call() -> None:
+    account = auth_module._upsert_account_sync("user_abc123", "alice@example.com")
+    assert account["clerk_sub"] == "user_abc123"
+    assert account["email"] == "alice@example.com"
+    assert "id" in account
+
+
+def test_upsert_returns_same_id_on_duplicate_sub() -> None:
+    a1 = auth_module._upsert_account_sync("user_abc123", "alice@example.com")
+    a2 = auth_module._upsert_account_sync("user_abc123", "alice-updated@example.com")
+    assert a1["id"] == a2["id"]
+    assert a2["email"] == "alice-updated@example.com"
+
+
+def test_upsert_two_different_subs_creates_two_accounts() -> None:
+    a1 = auth_module._upsert_account_sync("user_aaa", "a@example.com")
+    a2 = auth_module._upsert_account_sync("user_bbb", "b@example.com")
+    assert a1["id"] != a2["id"]
+
+
+# ── get_current_account via Clerk guard ──────────────────────────────────────
+
+def _fake_guard_with(clerk_sub: str, email: str = ""):
+    """Return a dependency override that injects a decoded Clerk token."""
+    fake_creds = ClerkCreds(
+        scheme="bearer",
+        credentials="fake-token",
+        decoded={"sub": clerk_sub, "email": email},
     )
-    assert res.status_code == 201
-    body = res.json()
-    assert body["token_type"] == "bearer"
-    assert body["email"] == "alice@example.com"
-    assert len(body["access_token"]) > 10
+
+    def _override():
+        return fake_creds
+
+    return _override
 
 
-def test_signup_duplicate_email_returns_409() -> None:
-    client.post(
-        "/api/auth/signup", json={"email": "alice@example.com", "password": "password123"}
-    )
-    res = client.post(
-        "/api/auth/signup", json={"email": "alice@example.com", "password": "different123"}
-    )
-    assert res.status_code == 409
-
-
-def test_signup_short_password_returns_422() -> None:
-    res = client.post(
-        "/api/auth/signup", json={"email": "alice@example.com", "password": "short"}
-    )
-    assert res.status_code == 422
-
-
-def test_signin_happy_path() -> None:
-    client.post(
-        "/api/auth/signup", json={"email": "bob@example.com", "password": "mypassword"}
-    )
-    res = client.post(
-        "/api/auth/signin", json={"email": "bob@example.com", "password": "mypassword"}
-    )
+def test_valid_clerk_token_provisions_account_and_allows_access() -> None:
+    app.dependency_overrides[clerk_guard] = _fake_guard_with("user_new123", "bob@example.com")
+    res = client.get("/api/documents")
     assert res.status_code == 200
-    body = res.json()
-    assert body["email"] == "bob@example.com"
-    assert "access_token" in body
 
-
-def test_signin_wrong_password_returns_401() -> None:
-    client.post(
-        "/api/auth/signup", json={"email": "carol@example.com", "password": "rightpassword"}
-    )
-    res = client.post(
-        "/api/auth/signin", json={"email": "carol@example.com", "password": "wrongpassword"}
-    )
-    assert res.status_code == 401
-
-
-def test_signin_nonexistent_email_returns_401() -> None:
-    res = client.post(
-        "/api/auth/signin", json={"email": "nobody@example.com", "password": "password123"}
-    )
-    assert res.status_code == 401
-
-
-def test_account_locks_after_five_failed_attempts() -> None:
-    client.post(
-        "/api/auth/signup", json={"email": "dave@example.com", "password": "correctpassword"}
-    )
-    for _ in range(5):
-        client.post(
-            "/api/auth/signin", json={"email": "dave@example.com", "password": "wrongpassword"}
-        )
-    res = client.post(
-        "/api/auth/signin", json={"email": "dave@example.com", "password": "correctpassword"}
-    )
-    assert res.status_code == 423
-
-
-def test_failed_attempts_reset_on_success() -> None:
-    client.post(
-        "/api/auth/signup", json={"email": "eve@example.com", "password": "correctpassword"}
-    )
-    for _ in range(3):
-        client.post(
-            "/api/auth/signin", json={"email": "eve@example.com", "password": "wrongpassword"}
-        )
-    # Correct password resets counter
-    res = client.post(
-        "/api/auth/signin", json={"email": "eve@example.com", "password": "correctpassword"}
-    )
-    assert res.status_code == 200
-    # Should be able to sign in again without lock
-    res2 = client.post(
-        "/api/auth/signin", json={"email": "eve@example.com", "password": "correctpassword"}
-    )
-    assert res2.status_code == 200
-
-
-# ── Forgot / Reset password ───────────────────────────────────────────────────
-
-def _stub_send_email(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Prevent real Resend API calls in tests."""
-    monkeypatch.setattr(auth_module, "_send_reset_email_sync", lambda *_: None)
-
-
-def test_forgot_password_known_email_returns_200(monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_send_email(monkeypatch)
-    client.post("/api/auth/signup", json={"email": "frank@example.com", "password": "password123"})
-    res = client.post("/api/auth/forgot-password", json={"email": "frank@example.com"})
-    assert res.status_code == 200
-    assert "reset link" in res.json()["message"].lower()
-
-
-def test_forgot_password_unknown_email_returns_200(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Unknown email must return the same 200 response to prevent enumeration."""
-    _stub_send_email(monkeypatch)
-    res = client.post("/api/auth/forgot-password", json={"email": "nobody@example.com"})
-    assert res.status_code == 200
-    assert "reset link" in res.json()["message"].lower()
-
-
-def test_reset_password_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_send_email(monkeypatch)
-    client.post("/api/auth/signup", json={"email": "grace@example.com", "password": "oldpassword"})
-    client.post("/api/auth/forgot-password", json={"email": "grace@example.com"})
-
-    # Retrieve the token directly from the DB
-    import db as db_module
+    # Verify the account was lazily created in the DB
     with db_module.get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT reset_token FROM account WHERE email = %s", ("grace@example.com",))
-            token = cur.fetchone()["reset_token"]
-
-    res = client.post(
-        "/api/auth/reset-password", json={"token": token, "new_password": "newpassword99"}
-    )
-    assert res.status_code == 200
-    # Can now sign in with the new password
-    signin = client.post(
-        "/api/auth/signin", json={"email": "grace@example.com", "password": "newpassword99"}
-    )
-    assert signin.status_code == 200
+            cur.execute("SELECT clerk_sub, email FROM account WHERE clerk_sub = %s", ("user_new123",))
+            row = cur.fetchone()
+    assert row is not None
+    assert row["email"] == "bob@example.com"
 
 
-def test_reset_password_invalid_token_returns_400(monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_send_email(monkeypatch)
-    res = client.post(
-        "/api/auth/reset-password", json={"token": "bogus-token", "new_password": "newpassword99"}
-    )
-    assert res.status_code == 400
+def test_missing_token_returns_403() -> None:
+    # No override — Clerk guard rejects missing Authorization header
+    res = client.get("/api/documents")
+    assert res.status_code == 403
 
 
-def test_reset_password_expired_token_returns_400(monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_send_email(monkeypatch)
-    client.post("/api/auth/signup", json={"email": "henry@example.com", "password": "password123"})
-    client.post("/api/auth/forgot-password", json={"email": "henry@example.com"})
-
-    # Back-date the expiry in the DB to simulate an expired token
-    import db as db_module
-    with db_module.get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT reset_token FROM account WHERE email = %s", ("henry@example.com",))
-            token = cur.fetchone()["reset_token"]
-            expired = datetime.now(timezone.utc) - timedelta(hours=2)
-            cur.execute(
-                "UPDATE account SET reset_token_expires_at = %s WHERE email = %s",
-                (expired, "henry@example.com"),
-            )
-
-    res = client.post(
-        "/api/auth/reset-password", json={"token": token, "new_password": "newpassword99"}
-    )
-    assert res.status_code == 400
-
-
-def test_reset_password_clears_lockout(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Successful reset unlocks a locked account."""
-    _stub_send_email(monkeypatch)
-    client.post("/api/auth/signup", json={"email": "iris@example.com", "password": "password123"})
-    # Lock the account
-    for _ in range(5):
-        client.post("/api/auth/signin", json={"email": "iris@example.com", "password": "wrong"})
-    assert client.post(
-        "/api/auth/signin", json={"email": "iris@example.com", "password": "password123"}
-    ).status_code == 423
-
-    client.post("/api/auth/forgot-password", json={"email": "iris@example.com"})
-    import db as db_module
-    with db_module.get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT reset_token FROM account WHERE email = %s", ("iris@example.com",))
-            token = cur.fetchone()["reset_token"]
-
-    client.post(
-        "/api/auth/reset-password", json={"token": token, "new_password": "brandnewpw"}
-    )
-    # Account should be unlocked
-    assert client.post(
-        "/api/auth/signin", json={"email": "iris@example.com", "password": "brandnewpw"}
-    ).status_code == 200
-
-
-def test_reset_password_short_password_returns_422(monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_send_email(monkeypatch)
-    res = client.post(
-        "/api/auth/reset-password", json={"token": "anytoken", "new_password": "short"}
-    )
-    assert res.status_code == 422
+def test_invalid_token_returns_403() -> None:
+    # No override — Clerk guard rejects unparseable JWT
+    res = client.get("/api/documents", headers={"Authorization": "Bearer not.a.valid.token"})
+    assert res.status_code == 403

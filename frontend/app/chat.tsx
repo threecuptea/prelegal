@@ -14,7 +14,8 @@ import {
   type DocumentType,
 } from './lib/document-types'
 import { DocumentPreview } from './document-preview'
-import { authFetch, getToken } from './lib/auth'
+import { useAuth } from '@clerk/clerk-react'
+import { authFetch } from './lib/auth'
 import AppHeader from './components/app-header'
 import DisclaimerBanner from './components/disclaimer-banner'
 
@@ -151,6 +152,7 @@ function ChatPanel({
 
 export default function Chat() {
   const router = useRouter()
+  const { isLoaded, isSignedIn, getToken } = useAuth()
   const [data, setData] = useState<DocumentFields>({})
   const [documentType, setDocumentType] = useState<DocumentType | null>(null)
   const [templateContent, setTemplateContent] = useState<string | null>(null)
@@ -171,10 +173,10 @@ export default function Chat() {
   const requestSeq = useRef(0)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Auth guard + docId hydration (runs once on mount)
+  // Auth guard + docId hydration
   useEffect(() => {
-    const token = getToken()
-    if (!token) {
+    if (!isLoaded) return
+    if (!isSignedIn) {
       router.replace('/auth')
       return
     }
@@ -183,8 +185,8 @@ export default function Chat() {
     if (!docId) return
     const numId = parseInt(docId, 10)
     if (isNaN(numId)) return
-    setSavedDocId(numId)
-    authFetch(`/api/documents/${numId}`)
+    setSavedDocId(numId) // eslint-disable-line react-hooks/set-state-in-effect
+    authFetch(`/api/documents/${numId}`, {}, getToken)
       .then(async (res) => {
         if (!res.ok) return
         const doc = await res.json()
@@ -193,7 +195,7 @@ export default function Chat() {
         if (doc.title) setSavedTitle(doc.title)
       })
       .catch(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn, router]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     return () => {
@@ -207,7 +209,7 @@ export default function Chat() {
     if (!documentType) return
     let cancelled = false
     const { templateFile } = DOCUMENT_REGISTRY[documentType]
-    setTemplateContent(null)
+    setTemplateContent(null) // eslint-disable-line react-hooks/set-state-in-effect
     fetch(`/templates/${templateFile}`)
       .then((res) => (res.ok ? res.text() : Promise.reject(res.status)))
       .then((text) => { if (!cancelled) setTemplateContent(text) })
@@ -241,7 +243,7 @@ export default function Chat() {
           isTemplateMode,
         }),
         signal: controller.signal,
-      })
+      }, getToken)
       if (!res.ok) throw new Error(`Chat failed: ${res.status}`)
 
       const body = (await res.json()) as ChatResponse
@@ -287,11 +289,6 @@ export default function Chat() {
 
   async function saveDocument(title: string): Promise<boolean> {
     if (!documentType) return false
-    const token = getToken()
-    if (!token) {
-      router.replace('/auth')
-      return false
-    }
     setSaving(true)
     try {
       let ok = false
@@ -300,7 +297,7 @@ export default function Chat() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title, document_type: documentType, fields: data }),
-        })
+        }, getToken)
         if (res.ok) {
           const doc = await res.json()
           setSavedDocId(doc.id)
@@ -315,7 +312,7 @@ export default function Chat() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title, fields: data }),
-        })
+        }, getToken)
         if (res.ok) {
           setSavedTitle(title)
           ok = true

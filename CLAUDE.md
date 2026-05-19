@@ -55,7 +55,6 @@ The entire project should be packaged into a Docker container.
 
 The backend is in `backend/` — a `uv` project (Python 3.12) using FastAPI. Put all routes under `backend/routes/` with the prefix convention:
 
-- `auth.py` → `/api/auth`
 - `chat.py` → `/api/chat`
 - `documents.py` → `/api/documents`
 
@@ -72,32 +71,31 @@ Backend available at http://localhost:8000
 ### Request flow
 
 1. Browser loads the statically-exported Next.js SPA from FastAPI (`GET /`).
-2. Unauthenticated users are redirected to `/auth` (sign in / sign up). JWT is stored in `sessionStorage`.
+2. Unauthenticated users are redirected to `/auth`. Clerk's `SignInButton`/`SignUpButton` open a modal; after sign-in Clerk issues a short-lived JWT stored client-side by the Clerk SDK.
 3. Authenticated users land on `frontend/app/chat.tsx` (two-column: chat left, field summary + live preview right). Loading a saved document appends `?docId=<id>` to the URL; the chat hydrates fields from `GET /api/documents/<id>` on mount.
-4. Each user turn `POST /api/chat` sends the full conversation history plus the current `DocumentFields` snapshot (stateless). The `Authorization: Bearer <jwt>` header is sent on all API calls via `authFetch`.
+4. Each user turn `POST /api/chat` sends the full conversation history plus the current `DocumentFields` snapshot (stateless). The `Authorization: Bearer <clerk-jwt>` header is sent on all authenticated API calls via `authFetch(url, init, getToken)` where `getToken` comes from Clerk's `useAuth()` hook.
 5. `backend/routes/chat.py` calls LiteLLM with `response_format=ChatResponse` (Pydantic structured output). Returns `{response, isComplete, documentType, suggestedDocument, ...fields}`.
 6. Frontend applies `mergeDocumentFields` to update state. The **Save** button (first save) opens a naming modal then POSTs to `/api/documents`; **Rename…** (subsequent saves) PUTs with the updated title and latest fields.
 
 ### Key files
 
 - `frontend/app/lib/document-types.ts` — `DocumentFields` interface, `DOCUMENT_REGISTRY` (all 11 doc types, each with `templateFile`), `mergeDocumentFields`, `missingRequiredDocumentFields`, `generateCoverPage` (cover page only, kept for tests), `processTemplateContent` (strips spans, removes leading heading), `generateDocument` (full self-contained doc: cover page → standard terms → signatures), escape utilities.
-- `frontend/app/lib/auth.ts` — `getToken/setToken/clearToken` (sessionStorage), `authFetch` (injects Bearer header, clears token + redirects on 401).
-- `frontend/app/chat.tsx` — unified chat UI with auth guard, Save/Rename…/Print toolbar, `?docId` hydration, `AppHeader`, disclaimer banner. Fetches `/templates/{templateFile}` when document type is detected; passes `templateContent` to preview. No Field Summary — Cover Page in the document preview serves that purpose.
-- `frontend/app/auth/page.tsx` — sign in / sign up page (new startup page).
+- `frontend/app/providers.tsx` — `'use client'` wrapper that provides `ClerkProvider` (from `@clerk/clerk-react`) to the entire app. Required because `layout.tsx` is a Server Component and cannot directly import client-side providers.
+- `frontend/app/lib/auth.ts` — `authFetch(url, init, getToken)`: injects Clerk Bearer token, redirects to `/auth` on 401/403.
+- `frontend/app/chat.tsx` — unified chat UI with Clerk auth guard (`useAuth()`), Save/Rename…/Print toolbar, `?docId` hydration, `AppHeader`, disclaimer banner. Fetches `/templates/{templateFile}` when document type is detected; passes `templateContent` to preview. No Field Summary — Cover Page in the document preview serves that purpose.
+- `frontend/app/auth/page.tsx` — Clerk sign-in/sign-up page using `SignInButton`/`SignUpButton` in modal mode.
 - `frontend/app/documents/page.tsx` — saved documents list with Load/Delete actions.
-- `frontend/app/components/app-header.tsx` — shared nav: logo, My Documents link, user email, Sign Out.
+- `frontend/app/components/app-header.tsx` — shared nav: logo, My Documents link, user email (from `useUser()`), `SignOutButton`.
 - `frontend/app/components/disclaimer-banner.tsx` — "documents are drafts" yellow banner.
 - `frontend/app/document-preview.tsx` — `TemplateContent` (inline markdown renderer), `DocumentPreview` (cover page fields → standard terms → signatures), `downloadMarkdown` (uses `generateDocument` when template available; falls back to `generateCoverPage`).
 - `frontend/public/templates/` — 11 Common Paper standard-terms `.md` files served as static assets (included in `frontend/out/` at build time).
-- `backend/db.py` — `init_db()`, `get_db()` context manager (psycopg2, RealDictCursor), `row_to_dict()` (datetime → ISO string), `_connect_kwargs()` (parses `?host=` query param for Cloud SQL Unix socket). Schema: `account` + `document` tables (SERIAL PKs, TIMESTAMPTZ timestamps).
+- `backend/db.py` — `init_db()`, `get_db()` context manager (psycopg2, RealDictCursor), `row_to_dict()` (datetime → ISO string), `_connect_kwargs()` (parses `?host=` query param for Cloud SQL Unix socket). Schema: `account` (`id`, `clerk_sub`, `email`, `created_at`) + `document` tables (SERIAL PKs, TIMESTAMPTZ timestamps). Idempotent migrations drop old password-auth columns.
 - `backend/models/chat.py` — `ChatResponse` flat model (LLM schema + API response), `ChatRequest`. `MAX_MESSAGE_CHARS`, `MAX_MESSAGES` constants.
-- `backend/models/auth.py` — `SignupRequest`, `SigninRequest`, `TokenResponse`.
 - `backend/models/documents.py` — `DocumentCreate`, `DocumentUpdate`, `DocumentSummary`, `DocumentDetail`.
-- `backend/services/auth_service.py` — bcrypt hash/verify, JWT create/decode (PyJWT HS256), signup/signin (5-attempt lockout), `get_current_account` FastAPI dependency.
+- `backend/services/auth_service.py` — Clerk JWT validation via `fastapi-clerk-auth` (`ClerkHTTPBearer`). `get_current_account` FastAPI dependency: validates Clerk JWT, lazily upserts account by `clerk_sub`. `CLERK_JWKS_URL` env var required.
 - `backend/services/chat_service.py` — `SYSTEM_PROMPT` (all 11 doc types), `snapshot_summary`, `build_messages`, `call_llm`.
 - `backend/services/document_service.py` — document CRUD via `asyncio.to_thread`; ownership enforced by `account_id`.
-- `backend/routes/auth.py` — `/api/auth/signup`, `/api/auth/signin`.
-- `backend/routes/documents.py` — `/api/documents` CRUD, all JWT-protected.
+- `backend/routes/documents.py` — `/api/documents` CRUD, all Clerk-JWT-protected.
 - `backend/routes/chat.py` — thin adapter: API-key guard + delegates to service.
 - `backend/main.py` — loads `.env`, lifespan calls `init_db()`, registers all routers, SPA fallback.
 
@@ -202,17 +200,23 @@ Backend available at http://localhost:8000
   - `terraform/gcp/variables.tf`: `db_password` variable added.
   - Backend tests: monkeypatch `DATABASE_URL` + `TRUNCATE … RESTART IDENTITY CASCADE` per test. 46 backend, 49 frontend, all passing.
   - **Deployment note**: when redeploying Cloud Run, always replace `docker_image.app` + `docker_registry_image.app` + `google_cloud_run_service.app` together to ensure the new image is built. A plain `-replace="google_cloud_run_service.app"` reuses the cached image.
+- **PL-14** — Replace home-made auth with Clerk user authentication (PR #16):
+  - Replaced bcrypt/PyJWT/Resend email/password auth entirely with Clerk. Auth is now handled client-side by `@clerk/clerk-react` (the pure React SDK — `@clerk/nextjs` v7+ uses Server Actions which are incompatible with `output: "export"`).
+  - Frontend: `ClerkProvider` added via `app/providers.tsx` wrapper (required because `layout.tsx` is a Server Component). `app/auth/page.tsx` replaced with `SignInButton`/`SignUpButton` modal buttons. `app/auth/reset-password/page.tsx` deleted (Clerk handles password reset). `app/lib/auth.ts` simplified to `authFetch(url, init, getToken)`. `app-header.tsx` uses `useUser()` + `SignOutButton`. `chat.tsx` and `documents/page.tsx` use `useAuth()` for auth guard and token injection.
+  - Backend: `auth_service.py` rewritten — Clerk JWT validated via `fastapi-clerk-auth` (`ClerkHTTPBearer` + `CLERK_JWKS_URL`). `get_current_account` lazily upserts account by `clerk_sub`. `routes/auth.py` and `models/auth.py` deleted. `pyproject.toml`: added `fastapi-clerk-auth`, removed `bcrypt`/`PyJWT`/`resend`.
+  - DB migration: idempotent `ALTER TABLE` drops old password-auth columns (`password_hash`, `failed_attempts`, `locked`, `reset_token`, `reset_token_expires_at`), adds `clerk_sub TEXT UNIQUE`, drops old `email UNIQUE` constraint.
+  - `Dockerfile`: `ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` bakes the Clerk publishable key into the static bundle at build time. `next.config.ts`: dev-only rewrite proxies `/api/*` → `localhost:8000` (excluded from `output: "export"` build).
+  - `terraform/gcp`: `clerk_publishable_key` variable added as Docker build arg; `JWT_SECRET`/`RESEND_API_KEY`/`APP_BASE_URL` Cloud Run env vars removed. `variables.tf` cleaned up.
+  - Env vars required: `CLERK_JWKS_URL` (backend `.env`); `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` (baked into Docker image at build time via `terraform.tfvars`).
+  - Tests: 41 backend (rewrote auth tests; document tests use `dependency_overrides` instead of signup/signin), 49 frontend, all passing.
+
   ### Current API Endpoints
 - `GET /api/health` → `{"status": "ok"}`
-- `POST /api/auth/signup` → `{access_token, token_type, email}` (201)
-- `POST /api/auth/signin` → `{access_token, token_type, email}` (401 bad creds, 423 locked)
-- `POST /api/auth/forgot-password` → `{message}` (200 always; sends reset email if account exists)
-- `POST /api/auth/reset-password` → `{message}` (200 success, 400 invalid/expired token, 422 short password)
-- `GET /api/documents` → `[{id, title, document_type, created_at, updated_at}]` (auth required)
-- `POST /api/documents` → `{id, title, document_type, fields, ...}` (auth required, 201)
-- `GET /api/documents/{id}` → `{id, title, document_type, fields, ...}` (auth required)
-- `PUT /api/documents/{id}` → updated document (auth required)
-- `DELETE /api/documents/{id}` → 204 (auth required)
+- `GET /api/documents` → `[{id, title, document_type, created_at, updated_at}]` (Clerk JWT required)
+- `POST /api/documents` → `{id, title, document_type, fields, ...}` (Clerk JWT required, 201)
+- `GET /api/documents/{id}` → `{id, title, document_type, fields, ...}` (Clerk JWT required)
+- `PUT /api/documents/{id}` → updated document (Clerk JWT required)
+- `DELETE /api/documents/{id}` → 204 (Clerk JWT required)
 - `POST /api/chat` → AI chat for all 11 document types. Body: `{messages, fields, isTemplateMode?}`. Response: flat `ChatResponse`.
 - `GET /_next/*` → static Next.js bundle assets
 - `GET|HEAD /{path}` → static frontend (`/` chat, `/auth`, `/documents`; SPA fallback to `index.html`)

@@ -41,14 +41,10 @@ def _connect_kwargs() -> dict:
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS account (
-    id              SERIAL PRIMARY KEY,
-    email           TEXT    NOT NULL UNIQUE,
-    password_hash   TEXT    NOT NULL,
-    failed_attempts INTEGER NOT NULL DEFAULT 0,
-    locked          INTEGER NOT NULL DEFAULT 0,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    reset_token     TEXT,
-    reset_token_expires_at TIMESTAMPTZ
+    id         SERIAL PRIMARY KEY,
+    clerk_sub  TEXT NOT NULL UNIQUE,
+    email      TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS document (
@@ -64,11 +60,29 @@ CREATE TABLE IF NOT EXISTS document (
 CREATE INDEX IF NOT EXISTS idx_document_account ON document(account_id);
 """
 
+# Idempotent migrations for existing databases that still have the old schema.
+_MIGRATIONS = [
+    "ALTER TABLE account ADD COLUMN IF NOT EXISTS clerk_sub TEXT UNIQUE",
+    "ALTER TABLE account ADD COLUMN IF NOT EXISTS email TEXT",
+    # Drop columns that belong to the old password-based auth.
+    "ALTER TABLE account DROP COLUMN IF EXISTS password_hash",
+    "ALTER TABLE account DROP COLUMN IF EXISTS failed_attempts",
+    "ALTER TABLE account DROP COLUMN IF EXISTS locked",
+    "ALTER TABLE account DROP COLUMN IF EXISTS reset_token",
+    "ALTER TABLE account DROP COLUMN IF EXISTS reset_token_expires_at",
+    # Give email a default so inserts that omit it don't fail.
+    "ALTER TABLE account ALTER COLUMN email SET DEFAULT ''",
+    # Drop the old UNIQUE constraint on email (Clerk users share '' when JWT omits email).
+    "ALTER TABLE account DROP CONSTRAINT IF EXISTS account_email_key",
+]
+
 
 def init_db() -> None:
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(_SCHEMA)
+            for stmt in _MIGRATIONS:
+                cur.execute(stmt)
 
 
 def row_to_dict(row) -> dict:
