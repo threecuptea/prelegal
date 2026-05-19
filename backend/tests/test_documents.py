@@ -5,7 +5,9 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+import db as db_module
 from main import app
+from services.auth_service import get_current_account
 
 client = TestClient(app)
 
@@ -17,29 +19,36 @@ _SAMPLE_FIELDS = {
 
 
 @pytest.fixture(autouse=True)
-def _setup(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-key")
-    import db as db_module
-
+def _setup(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(db_module, "DATABASE_URL", "postgresql://prelegal:prelegal@localhost:5432/prelegal")
     db_module.init_db()
     with db_module.get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("TRUNCATE TABLE document, account RESTART IDENTITY CASCADE")
+    yield
+    app.dependency_overrides.pop(get_current_account, None)
 
 
-def _make_token(email: str = "user@example.com", password: str = "testpassword") -> str:
-    client.post("/api/auth/signup", json={"email": email, "password": password})
-    res = client.post("/api/auth/signin", json={"email": email, "password": password})
-    return res.json()["access_token"]
+def _insert_account(clerk_sub: str, email: str = "test@example.com") -> dict:
+    with db_module.get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO account (clerk_sub, email) VALUES (%s, %s) RETURNING id, clerk_sub, email",
+                (clerk_sub, email),
+            )
+            return dict(cur.fetchone())
+
+
+def _auth_as(account: dict) -> None:
+    app.dependency_overrides[get_current_account] = lambda: account
 
 
 def test_create_document() -> None:
-    token = _make_token()
+    account = _insert_account("user_abc")
+    _auth_as(account)
     res = client.post(
         "/api/documents",
         json={"title": "My NDA", "document_type": "mutual-nda", "fields": _SAMPLE_FIELDS},
-        headers={"Authorization": f"Bearer {token}"},
     )
     assert res.status_code == 201
     body = res.json()
@@ -50,53 +59,39 @@ def test_create_document() -> None:
 
 
 def test_list_documents() -> None:
-    token = _make_token()
-    client.post(
-        "/api/documents",
-        json={"title": "Doc A", "document_type": "mutual-nda", "fields": {}},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    client.post(
-        "/api/documents",
-        json={"title": "Doc B", "document_type": "csa", "fields": {}},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    res = client.get("/api/documents", headers={"Authorization": f"Bearer {token}"})
+    account = _insert_account("user_abc")
+    _auth_as(account)
+    client.post("/api/documents", json={"title": "Doc A", "document_type": "mutual-nda", "fields": {}})
+    client.post("/api/documents", json={"title": "Doc B", "document_type": "csa", "fields": {}})
+    res = client.get("/api/documents")
     assert res.status_code == 200
     docs = res.json()
     assert len(docs) == 2
-    titles = {d["title"] for d in docs}
-    assert titles == {"Doc A", "Doc B"}
+    assert {d["title"] for d in docs} == {"Doc A", "Doc B"}
 
 
 def test_get_document() -> None:
-    token = _make_token()
+    account = _insert_account("user_abc")
+    _auth_as(account)
     create_res = client.post(
         "/api/documents",
         json={"title": "My NDA", "document_type": "mutual-nda", "fields": _SAMPLE_FIELDS},
-        headers={"Authorization": f"Bearer {token}"},
     )
     doc_id = create_res.json()["id"]
-    res = client.get(
-        f"/api/documents/{doc_id}", headers={"Authorization": f"Bearer {token}"}
-    )
+    res = client.get(f"/api/documents/{doc_id}")
     assert res.status_code == 200
     assert res.json()["fields"]["governingLaw"] == "California"
 
 
 def test_update_document() -> None:
-    token = _make_token()
+    account = _insert_account("user_abc")
+    _auth_as(account)
     create_res = client.post(
         "/api/documents",
         json={"title": "Old Title", "document_type": "mutual-nda", "fields": {}},
-        headers={"Authorization": f"Bearer {token}"},
     )
     doc_id = create_res.json()["id"]
-    res = client.put(
-        f"/api/documents/{doc_id}",
-        json={"title": "New Title", "fields": _SAMPLE_FIELDS},
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    res = client.put(f"/api/documents/{doc_id}", json={"title": "New Title", "fields": _SAMPLE_FIELDS})
     assert res.status_code == 200
     body = res.json()
     assert body["title"] == "New Title"
@@ -104,45 +99,42 @@ def test_update_document() -> None:
 
 
 def test_delete_document() -> None:
-    token = _make_token()
+    account = _insert_account("user_abc")
+    _auth_as(account)
     create_res = client.post(
         "/api/documents",
         json={"title": "To Delete", "document_type": "mutual-nda", "fields": {}},
-        headers={"Authorization": f"Bearer {token}"},
     )
     doc_id = create_res.json()["id"]
-    res = client.delete(
-        f"/api/documents/{doc_id}", headers={"Authorization": f"Bearer {token}"}
-    )
+    res = client.delete(f"/api/documents/{doc_id}")
     assert res.status_code == 204
-    get_res = client.get(
-        f"/api/documents/{doc_id}", headers={"Authorization": f"Bearer {token}"}
-    )
+    get_res = client.get(f"/api/documents/{doc_id}")
     assert get_res.status_code == 404
 
 
 def test_ownership_guard_returns_404() -> None:
-    token_a = _make_token("a@example.com")
-    token_b = _make_token("b@example.com", "otherpassword")
+    account_a = _insert_account("user_aaa", "a@example.com")
+    account_b = _insert_account("user_bbb", "b@example.com")
+
+    _auth_as(account_a)
     create_res = client.post(
         "/api/documents",
         json={"title": "Private Doc", "document_type": "mutual-nda", "fields": {}},
-        headers={"Authorization": f"Bearer {token_a}"},
     )
     doc_id = create_res.json()["id"]
-    res = client.get(
-        f"/api/documents/{doc_id}", headers={"Authorization": f"Bearer {token_b}"}
-    )
+
+    _auth_as(account_b)
+    res = client.get(f"/api/documents/{doc_id}")
     assert res.status_code == 404
 
 
-def test_unauthenticated_returns_401() -> None:
+def test_unauthenticated_returns_403() -> None:
+    # No override — Clerk guard is active and rejects missing token
     res = client.get("/api/documents")
-    assert res.status_code == 401
+    assert res.status_code == 403
 
 
-def test_expired_token_returns_401() -> None:
-    res = client.get(
-        "/api/documents", headers={"Authorization": "Bearer not.a.real.token"}
-    )
-    assert res.status_code == 401
+def test_invalid_token_returns_403() -> None:
+    # No override — Clerk guard rejects unparseable JWT
+    res = client.get("/api/documents", headers={"Authorization": "Bearer not.a.real.token"})
+    assert res.status_code == 403

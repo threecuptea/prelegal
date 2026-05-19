@@ -22,7 +22,6 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv()
 
 import db  # noqa: E402  (env must load first)
-from routes.auth import router as auth_router  # noqa: E402
 from routes.chat import router as chat_router  # noqa: E402
 from routes.documents import router as documents_router  # noqa: E402
 
@@ -33,8 +32,8 @@ STATIC_DIR = Path(__file__).parent.parent / "frontend" / "out"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    if not os.environ.get("JWT_SECRET"):
-        logger.warning("JWT_SECRET env var not set — auth endpoints will fail")
+    if not os.environ.get("CLERK_JWKS_URL"):
+        logger.warning("CLERK_JWKS_URL env var not set — authenticated endpoints will fail")
     db.init_db()
     yield
 
@@ -58,7 +57,6 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(documents_router)
 

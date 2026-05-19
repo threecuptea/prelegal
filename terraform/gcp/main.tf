@@ -115,6 +115,9 @@ resource "docker_image" "app" {
     dockerfile = "Dockerfile"
     platform   = "linux/amd64"
     no_cache   = true
+    build_args = {
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = var.clerk_publishable_key
+    }
   }
 
   depends_on = [
@@ -155,21 +158,6 @@ resource "google_cloud_run_service" "app" {
         env {
           name  = "OPENROUTER_API_KEY"
           value = var.openrouter_api_key
-        }
-
-        env {
-          name  = "RESEND_API_KEY"
-          value = var.resend_api_key
-        }
-
-        env {
-          name  = "JWT_SECRET"
-          value = var.jwt_secret
-        }
-
-        env {
-          name  = "APP_BASE_URL"
-          value = var.app_base_url
         }
 
         env {

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { clearToken, getToken } from '../lib/auth'
+import { useAuth } from '@clerk/clerk-react'
+import { authFetch } from '../lib/auth'
 import AppHeader from '../components/app-header'
 import DisclaimerBanner from '../components/disclaimer-banner'
 
@@ -19,7 +20,6 @@ interface DocumentSummary {
 }
 
 function formatDate(dt: string): string {
-  // Postgres returns full ISO 8601 with timezone; normalize legacy SQLite strings too
   const normalized = dt.includes('T') ? dt : dt.replace(' ', 'T') + 'Z'
   return new Date(normalized).toLocaleString('en-US', {
     year: 'numeric',
@@ -32,37 +32,29 @@ function formatDate(dt: string): string {
 
 export default function DocumentsPage() {
   const router = useRouter()
+  const { isLoaded, isSignedIn, getToken } = useAuth()
   const [docs, setDocs] = useState<DocumentSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const token = getToken()
-    if (!token) {
+    if (!isLoaded) return
+    if (!isSignedIn) {
       router.replace('/auth')
       return
     }
-    fetch('/api/documents', { headers: { Authorization: `Bearer ${token}` } })
+    authFetch('/api/documents', {}, getToken)
       .then(async (res) => {
-        if (res.status === 401) {
-          clearToken()
-          router.replace('/auth')
-          return
-        }
         if (!res.ok) throw new Error('Failed to load documents')
         setDocs(await res.json())
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [router])
+  }, [isLoaded, isSignedIn, router]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function deleteDoc(id: number) {
-    const token = getToken()
-    if (!token || !confirm('Delete this document? This cannot be undone.')) return
-    const res = await fetch(`/api/documents/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    if (!confirm('Delete this document? This cannot be undone.')) return
+    const res = await authFetch(`/api/documents/${id}`, { method: 'DELETE' }, getToken)
     if (res.ok || res.status === 204) {
       setDocs((prev) => prev.filter((d) => d.id !== id))
     }
