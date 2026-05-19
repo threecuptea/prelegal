@@ -156,7 +156,7 @@ Backend available at http://localhost:8000
   - Today's date injected into `snapshot_summary` for all sessions (template and regular), enabling universal LLM warning when a confirmed `effectiveDate` is in the past.
   - `isEffectiveDateInPast(dateStr)` helper added to `document-types.ts` (with parse guard for malformed input).
   - Tests: 39 backend (added 4), 40 frontend (added 3), all passing.
-    **PL-10** — Forgot and reset password (PR #12):
+- **PL-10** — Forgot and reset password (PR #12):
   - "Forgot password?" link on the Sign In screen switches the auth card inline to an email-entry view (`Tab` extended to `'signin' | 'signup' | 'forgot'`). No new page needed for the forgot step.
   - `POST /api/auth/forgot-password` — generates a `secrets.token_urlsafe(32)` token stored with a 1-hour expiry, sends a Resend email from `prelegal-no-reply@threecuptea.com`. Always returns 200 regardless of whether the email exists (anti-enumeration); email send failures are logged and swallowed.
   - `POST /api/auth/reset-password` — validates token + expiry, updates `password_hash`, clears `reset_token`, resets `failed_attempts` and `locked` so previously-locked accounts regain access.
@@ -165,7 +165,6 @@ Backend available at http://localhost:8000
   - Requires `RESEND_API_KEY` and `APP_BASE_URL` in `.env` (`http://localhost:3000` dev, `http://localhost` Docker, production domain for prod).
   - Tests: 46 backend (added 7), 40 frontend, all passing.
 - **PL-11** — User-provided document title; split Save / Rename / Print actions (PR #13):
-
   - **Download .md** removed (legal docs are shared as PDF, not markdown).
   - **"Save & Print PDF"** replaced by three context-aware toolbar buttons:
     - **Save** (visible only before first save, enabled when `isComplete`): opens naming modal → saves to DB → print dialog opens so user can save PDF with the same filename.
@@ -193,7 +192,7 @@ Backend available at http://localhost:8000
     a SSL certificate managed by Google is added and required by the load balancer backend HTTPS.  However, the status of the SSL certificate won't become ACTIVE until the link of the specified domain DNS and the IP address of the load balancer is established (proprogated) and it is O.K. to attach a SSL certificate of a PROVISIONING status to a load balacer.  You might see `FAILED-NOT_VISIBLE` error too. That will go away when the link of the specified domain DNS and the IP address of the load balancer is established (proprogated)
   - The correct order: configure a static IP, a SSL certificate, a load balancer in GCP and a DNS record in the domain hosting site following the instructions.
   - The end result is [Prelegal Service](https://prelegal.threecuptea.com/)
-  **PL-13** — Migrate from SQLite to Cloud SQL Postgres for persistent GCP storage (PR #15):
+- **PL-13** — Migrate from SQLite to Cloud SQL Postgres for persistent GCP storage (PR #15):
   - `backend/db.py`: replaced sqlite3 with psycopg2. `DATABASE_URL` env var. `_connect_kwargs()` manually parses `?host=` query param so Cloud SQL Unix socket works with psycopg2 (which ignores that param in its URL parser). `row_to_dict()` serializes TIMESTAMPTZ datetimes to ISO strings.
   - `backend/services/auth_service.py` + `document_service.py`: explicit cursors, `%s` placeholders, `RETURNING *` on INSERT/UPDATE (no redundant SELECT), `NOW()`, `psycopg2.errors.UniqueViolation`, email lowercased on all inserts and queries.
   - `backend/pyproject.toml`: `psycopg2-binary>=2.9` added.
