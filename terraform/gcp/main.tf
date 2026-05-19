@@ -233,6 +233,10 @@ resource "google_cloud_run_service_iam_member" "public" {
   location = google_cloud_run_service.app.location
   role     = "roles/run.invoker"
   member   = "allUsers"
+
+  lifecycle {
+    replace_triggered_by = [google_cloud_run_service.app]
+  }
 }
 
 # Outputs
