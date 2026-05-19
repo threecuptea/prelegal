@@ -63,7 +63,7 @@ Business logic belongs in `backend/services/` (e.g. `chat_service.py`); route fu
 
 The frontend is in `frontend/` — Next.js 16, React 19, Tailwind 4. It is statically exported (`next.config.ts` → `output: "export"`) to `frontend/out/`, which FastAPI serves at runtime. The `frontend/AGENTS.md` note is important: read `node_modules/next/dist/docs/` before writing Next.js-specific code because this version has breaking API changes.
 
-The database uses SQLite (`backend/db.py`). Schema is created on startup via `init_db()` called from the FastAPI lifespan. In Docker the DB file lives at `/data/prelegal.db` (named volume `prelegal-data` for restart persistence). In local dev it defaults to `./prelegal.db` in the backend directory (override with `PRELEGAL_DB_PATH` env var).
+The database uses **PostgreSQL** via `psycopg2` (`backend/db.py`). Schema is created on startup via `init_db()` called from the FastAPI lifespan. Connection is configured via `DATABASE_URL` env var (defaults to `postgresql://prelegal:prelegal@localhost:5432/prelegal`). In Docker, the `postgres:15` service in `docker-compose.yaml` provides the database. In production (Cloud Run), Cloud SQL Postgres 15 is used via Unix socket (`?host=/cloudsql/...`). For local dev, start Postgres first: `docker compose up postgres -d`.
 
 Backend available at http://localhost:8000
 
@@ -89,7 +89,7 @@ Backend available at http://localhost:8000
 - `frontend/app/components/disclaimer-banner.tsx` — "documents are drafts" yellow banner.
 - `frontend/app/document-preview.tsx` — `TemplateContent` (inline markdown renderer), `DocumentPreview` (cover page fields → standard terms → signatures), `downloadMarkdown` (uses `generateDocument` when template available; falls back to `generateCoverPage`).
 - `frontend/public/templates/` — 11 Common Paper standard-terms `.md` files served as static assets (included in `frontend/out/` at build time).
-- `backend/db.py` — `init_db()`, `get_db()` context manager (sqlite3, WAL mode). Schema: `account` + `document` tables.
+- `backend/db.py` — `init_db()`, `get_db()` context manager (psycopg2, RealDictCursor), `row_to_dict()` (datetime → ISO string), `_connect_kwargs()` (parses `?host=` query param for Cloud SQL Unix socket). Schema: `account` + `document` tables (SERIAL PKs, TIMESTAMPTZ timestamps).
 - `backend/models/chat.py` — `ChatResponse` flat model (LLM schema + API response), `ChatRequest`. `MAX_MESSAGE_CHARS`, `MAX_MESSAGES` constants.
 - `backend/models/auth.py` — `SignupRequest`, `SigninRequest`, `TokenResponse`.
 - `backend/models/documents.py` — `DocumentCreate`, `DocumentUpdate`, `DocumentSummary`, `DocumentDetail`.
@@ -180,7 +180,6 @@ Backend available at http://localhost:8000
   - No backend changes needed (title field already existed in DB).
   - Tests: 39 backend (unchanged), 49 frontend (added 9), all passing.
 - **PL-12** Automate the production deployment with Iac Terraform and also add domain to the service url
-
   - Add Terraform to automate the deployment to Cloud Run in GCP.   Cloud Run is a service for the cost-effective serverless container deployment. Prelegal built as docker image is ready for that.
   - Copy from tf files `terraform/gcp` folder of `cyber` project as the template plus terraform.tfvars so that it can be fully automated.  Make adjustment to project_id and environment variables etc.
   - `terraform apply` created 8 services, including `cloudbuild`, `artifactregistry` and `cloudrun`
@@ -194,6 +193,16 @@ Backend available at http://localhost:8000
     a SSL certificate managed by Google is added and required by the load balancer backend HTTPS.  However, the status of the SSL certificate won't become ACTIVE until the link of the specified domain DNS and the IP address of the load balancer is established (proprogated) and it is O.K. to attach a SSL certificate of a PROVISIONING status to a load balacer.  You might see `FAILED-NOT_VISIBLE` error too. That will go away when the link of the specified domain DNS and the IP address of the load balancer is established (proprogated)
   - The correct order: configure a static IP, a SSL certificate, a load balancer in GCP and a DNS record in the domain hosting site following the instructions.
   - The end result is [Prelegal Service](https://prelegal.threecuptea.com/)
+  **PL-13** — Migrate from SQLite to Cloud SQL Postgres for persistent GCP storage (PR #15):
+  - `backend/db.py`: replaced sqlite3 with psycopg2. `DATABASE_URL` env var. `_connect_kwargs()` manually parses `?host=` query param so Cloud SQL Unix socket works with psycopg2 (which ignores that param in its URL parser). `row_to_dict()` serializes TIMESTAMPTZ datetimes to ISO strings.
+  - `backend/services/auth_service.py` + `document_service.py`: explicit cursors, `%s` placeholders, `RETURNING *` on INSERT/UPDATE (no redundant SELECT), `NOW()`, `psycopg2.errors.UniqueViolation`, email lowercased on all inserts and queries.
+  - `backend/pyproject.toml`: `psycopg2-binary>=2.9` added.
+  - `docker-compose.yaml`: `postgres:15` service with `pg_isready` healthcheck; `prelegal` service `depends_on: condition: service_healthy`; removed `prelegal-data` SQLite volume.
+  - `Dockerfile`: removed `ENV PRELEGAL_DB_PATH`.
+  - `terraform/gcp/main.tf`: Cloud SQL Postgres 15 (`db-f1-micro`), dedicated Cloud Run service account with `roles/cloudsql.client`, `run.googleapis.com/cloudsql-instances` annotation, `DATABASE_URL` env var, `replace_triggered_by` on IAM member (eliminates 403 window when Cloud Run is replaced).
+  - `terraform/gcp/variables.tf`: `db_password` variable added.
+  - Backend tests: monkeypatch `DATABASE_URL` + `TRUNCATE … RESTART IDENTITY CASCADE` per test. 46 backend, 49 frontend, all passing.
+  - **Deployment note**: when redeploying Cloud Run, always replace `docker_image.app` + `docker_registry_image.app` + `google_cloud_run_service.app` together to ensure the new image is built. A plain `-replace="google_cloud_run_service.app"` reuses the cached image.
   ### Current API Endpoints
 - `GET /api/health` → `{"status": "ok"}`
 - `POST /api/auth/signup` → `{access_token, token_type, email}` (201)

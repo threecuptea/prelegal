@@ -12,6 +12,7 @@ dependencies = [
     "PyJWT>=2.10",
     "bcrypt>=4.0",
     "resend>=2.30.0",
+    "psycopg2-binary>=2.9",
 ]
 
 [dependency-groups]

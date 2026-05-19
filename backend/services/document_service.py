@@ -7,50 +7,50 @@ import json
 
 from fastapi import HTTPException
 
-from db import get_db
+from db import get_db, row_to_dict
 
 
 def _list_sync(account_id: int) -> list[dict]:
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT id, title, document_type, created_at, updated_at "
-            "FROM document WHERE account_id = ? ORDER BY updated_at DESC",
-            (account_id,),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, title, document_type, created_at, updated_at "
+                "FROM document WHERE account_id = %s ORDER BY updated_at DESC",
+                (account_id,),
+            )
+            return [row_to_dict(r) for r in cur.fetchall()]
 
 
 def _create_sync(
     account_id: int, title: str, document_type: str, fields: dict
 ) -> dict:
     with get_db() as conn:
-        cursor = conn.execute(
-            "INSERT INTO document (account_id, title, document_type, fields_json) "
-            "VALUES (?, ?, ?, ?)",
-            (account_id, title, document_type, json.dumps(fields)),
-        )
-        row = conn.execute(
-            "SELECT id, title, document_type, fields_json, created_at, updated_at "
-            "FROM document WHERE id = ?",
-            (cursor.lastrowid,),
-        ).fetchone()
-        d = dict(row)
-        d["fields"] = json.loads(d.pop("fields_json"))
-        return d
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO document (account_id, title, document_type, fields_json) "
+                "VALUES (%s, %s, %s, %s) "
+                "RETURNING id, title, document_type, fields_json, created_at, updated_at",
+                (account_id, title, document_type, json.dumps(fields)),
+            )
+            d = row_to_dict(cur.fetchone())
+            d["fields"] = json.loads(d.pop("fields_json"))
+            return d
 
 
 def _get_sync(doc_id: int, account_id: int) -> dict:
     result = None
     with get_db() as conn:
-        row = conn.execute(
-            "SELECT id, title, document_type, fields_json, created_at, updated_at "
-            "FROM document WHERE id = ? AND account_id = ?",
-            (doc_id, account_id),
-        ).fetchone()
-        if row:
-            d = dict(row)
-            d["fields"] = json.loads(d.pop("fields_json"))
-            result = d
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, title, document_type, fields_json, created_at, updated_at "
+                "FROM document WHERE id = %s AND account_id = %s",
+                (doc_id, account_id),
+            )
+            row = cur.fetchone()
+            if row is not None:
+                d = row_to_dict(row)
+                d["fields"] = json.loads(d.pop("fields_json"))
+                result = d
     if result is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return result
@@ -59,45 +59,39 @@ def _get_sync(doc_id: int, account_id: int) -> dict:
 def _update_sync(
     doc_id: int, account_id: int, title: str | None, fields: dict | None
 ) -> dict:
-    result = None
     with get_db() as conn:
-        row = conn.execute(
-            "SELECT id, title, fields_json FROM document WHERE id = ? AND account_id = ?",
-            (doc_id, account_id),
-        ).fetchone()
-        if row:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, title, fields_json FROM document WHERE id = %s AND account_id = %s",
+                (doc_id, account_id),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Document not found")
             new_title = title if title is not None else row["title"]
             new_fields_json = (
                 json.dumps(fields) if fields is not None else row["fields_json"]
             )
-            conn.execute(
-                "UPDATE document SET title = ?, fields_json = ?, updated_at = datetime('now') "
-                "WHERE id = ?",
+            cur.execute(
+                "UPDATE document SET title = %s, fields_json = %s, updated_at = NOW() "
+                "WHERE id = %s "
+                "RETURNING id, title, document_type, fields_json, created_at, updated_at",
                 (new_title, new_fields_json, doc_id),
             )
-            updated = conn.execute(
-                "SELECT id, title, document_type, fields_json, created_at, updated_at "
-                "FROM document WHERE id = ?",
-                (doc_id,),
-            ).fetchone()
-            d = dict(updated)
+            d = row_to_dict(cur.fetchone())
             d["fields"] = json.loads(d.pop("fields_json"))
-            result = d
-    if result is None:
-        raise HTTPException(status_code=404, detail="Document not found")
-    return result
+            return d
 
 
 def _delete_sync(doc_id: int, account_id: int) -> None:
-    deleted = False
     with get_db() as conn:
-        cursor = conn.execute(
-            "DELETE FROM document WHERE id = ? AND account_id = ?",
-            (doc_id, account_id),
-        )
-        deleted = cursor.rowcount > 0
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Document not found")
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM document WHERE id = %s AND account_id = %s",
+                (doc_id, account_id),
+            )
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Document not found")
 
 
 async def list_documents(account_id: int) -> list[dict]:

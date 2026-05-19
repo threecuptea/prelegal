@@ -19,8 +19,9 @@ interface DocumentSummary {
 }
 
 function formatDate(dt: string): string {
-  // SQLite returns "YYYY-MM-DD HH:MM:SS" — replace space with T for ISO 8601
-  return new Date(dt.replace(' ', 'T') + 'Z').toLocaleString('en-US', {
+  // Postgres returns full ISO 8601 with timezone; normalize legacy SQLite strings too
+  const normalized = dt.includes('T') ? dt : dt.replace(' ', 'T') + 'Z'
+  return new Date(normalized).toLocaleString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

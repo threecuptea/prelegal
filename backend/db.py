@@ -1,33 +1,64 @@
-"""SQLite database module: schema init and connection context manager."""
+"""PostgreSQL database module: schema init and connection context manager."""
 
 from __future__ import annotations
 
 import os
-import sqlite3
 from contextlib import contextmanager
-from pathlib import Path
+from datetime import datetime
 from typing import Generator
+from urllib.parse import parse_qs, urlparse
 
-DB_PATH = os.getenv("PRELEGAL_DB_PATH", "./prelegal.db")
+import psycopg2
+import psycopg2.extras
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://prelegal:prelegal@localhost:5432/prelegal",
+)
+
+
+def _connect_kwargs() -> dict:
+    """Build psycopg2.connect() kwargs from DATABASE_URL.
+
+    Handles the Cloud SQL Unix socket form where the host is passed as a
+    query parameter: postgresql://user:pass@/dbname?host=/cloudsql/...
+    psycopg2's URL parser ignores ?host=, so we extract it manually.
+    """
+    parsed = urlparse(DATABASE_URL)
+    qs = parse_qs(parsed.query)
+    host = (qs.get("host") or [parsed.hostname])[0]
+    kwargs: dict = {
+        "dbname": parsed.path.lstrip("/"),
+        "user": parsed.username,
+        "password": parsed.password,
+        "cursor_factory": psycopg2.extras.RealDictCursor,
+    }
+    if host:
+        kwargs["host"] = host
+    if parsed.port:
+        kwargs["port"] = parsed.port
+    return kwargs
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS account (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    email           TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+    id              SERIAL PRIMARY KEY,
+    email           TEXT    NOT NULL UNIQUE,
     password_hash   TEXT    NOT NULL,
     failed_attempts INTEGER NOT NULL DEFAULT 0,
     locked          INTEGER NOT NULL DEFAULT 0,
-    created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    reset_token     TEXT,
+    reset_token_expires_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS document (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    id            SERIAL PRIMARY KEY,
     account_id    INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
     title         TEXT    NOT NULL,
     document_type TEXT    NOT NULL,
     fields_json   TEXT    NOT NULL,
-    created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
-    updated_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_document_account ON document(account_id);
@@ -35,27 +66,19 @@ CREATE INDEX IF NOT EXISTS idx_document_account ON document(account_id);
 
 
 def init_db() -> None:
-    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.executescript(_SCHEMA)
-        # Migrations: add columns that didn't exist in earlier schema versions.
-        for col_sql in [
-            "ALTER TABLE account ADD COLUMN reset_token TEXT",
-            "ALTER TABLE account ADD COLUMN reset_token_expires_at TEXT",
-        ]:
-            try:
-                conn.execute(col_sql)
-            except sqlite3.OperationalError:
-                pass  # column already exists
-        conn.commit()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SCHEMA)
+
+
+def row_to_dict(row) -> dict:
+    """Convert a RealDictRow to a plain dict, serializing datetimes to ISO strings."""
+    return {k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in dict(row).items()}
 
 
 @contextmanager
-def get_db() -> Generator[sqlite3.Connection, None, None]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
+def get_db() -> Generator[psycopg2.extensions.connection, None, None]:
+    conn = psycopg2.connect(**_connect_kwargs())
     try:
         yield conn
         conn.commit()

@@ -17,12 +17,15 @@ _SAMPLE_FIELDS = {
 
 
 @pytest.fixture(autouse=True)
-def _setup(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+def _setup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-key")
     import db as db_module
 
-    monkeypatch.setattr(db_module, "DB_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setattr(db_module, "DATABASE_URL", "postgresql://prelegal:prelegal@localhost:5432/prelegal")
     db_module.init_db()
+    with db_module.get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE TABLE document, account RESTART IDENTITY CASCADE")
 
 
 def _make_token(email: str = "user@example.com", password: str = "testpassword") -> str:
