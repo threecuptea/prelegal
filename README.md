@@ -33,6 +33,8 @@ Clarifying Questions stimulates deep thinkings of some architect design issues a
 * How do we load and re-construct documents?  Do we assign the title and field dictionaries internally and saved in the database? Then there is disconnection to actual title of a saved PDF.   How will a user be able to find the document that he/ she want to use it as a template?
 
 **I enjoy feature-dev because I feel that I can be an engaging participant in architect design and development.**
+
+
 Quality Review: agents in parallel with different focuses:
 
 * **Simplicity/DRY/Elegance**: Code quality and maintainability
