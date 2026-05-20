@@ -32,16 +32,14 @@ Clarifying Questions stimulates deep thinkings of some architect design issues a
 * There are 12 legal document templates. Each has its own required field. How do we model them? Do we use generic dictionaries? Do we Have 12 different Pydantic types so that we can have specific required fields or do we have one central model with shared/ common fields and section of optional fields for different document types?  The model design needs to be compatible with the design API end point(s).
 * How do we load and re-construct documents?  Do we assign the title and field dictionaries internally and saved in the database? Then there is disconnection to actual title of a saved PDF.   How will a user be able to find the document that he/ she want to use it as a template?
 
+**I enjoy feature-dev because I feel that I can be an engaging participant in architect design and development.**
 Quality Review: agents in parallel with different focuses:
 
 * **Simplicity/DRY/Elegance**: Code quality and maintainability
-
 * **Bugs/Correctness**: Functional correctness and logic errors
 * **Conventions/Abstractions**: Project standards and patterns
 
 That detects critical bugs (the bug agent found out that `psycopg2` ignore the query param of Unix-style syntax that Cloud SQL happens to use ahead of the production deployment) and ensure high-quality codes consistent with project standard and patterns.
-
-**I enjoy feature-dev because I feel that I can be an engaging participant in architect design and development.**
 
 ## Working with Claude Codes is a self-assertive and growing experience
 
@@ -51,13 +49,13 @@ I found out that I have to redo some architect design and features because I let
 
 ## Elevate/ adjust yourself as a planner and architect
 
-You are writing specs in Jira tickets and give clear instruction. You need to know what you are doing ahead of the process. Claude Codes will ask a lot of challenging questions in the **Clarify Question** phase.  Those decision might be critical to the product, the development and deployment.  Remember that you not Claude Code are ultimately responsible for updating/ maintaining products and you want to have consistent design and architect across the board of all your products.  Claude Code can alleviate you from being bombarded with implementation details and have a quality of life.  However, you have to broaden yourself, and expand your horizon.
+You are writing specs in Jira tickets and give clear instruction. You need to know what you are doing ahead of the process. Claude Codes will ask a lot of challenging questions in the **Clarify Question** phase.  Those decision might be critical to the product, the development and deployment.  Remember that you not Claude Code are ultimately responsible for updating/ maintaining products and you want to have a consistent design and architect across the board of all your products.  Claude Code can alleviate you from being bombarded with implementation details and have a quality of life.  However, you have to broaden yourself, and expand your horizon.
 
 ## Keep even-handed interaction. Be an engaging participant, learning from Claude Code and keep programming skill sharp
 
 I consider Claude Code as an enthusiatic, tireless high IQ and tech-savy senior developer. I acknoledge that I have some techical deficiency compared with it.  I am humble, willing to learn and try my best to follow, and ask questions.
 
-On the side, I have 10,000-foot view. I can see the inconsistency, gap and bad user experiences of design flaw that Claude Code are blind to. I also have intangible software development knowledge and business-conteext judgement.  I and AI coding can make up for each other.
+On the side, I have 10,000-foot view. I can see the inconsistency, gap and bad user experiences of design flaw that Claude Code are blind to. I also have intangible software development knowledge and business-context judgement.  I and AI coding can make up for each other.
 
 Human beings tends to lay back when they are not responseible for a task. The mentality is that Claude Code will take care of everything.  There are two problems here.
 
