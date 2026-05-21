@@ -6,7 +6,7 @@ Prelegal is a SaaS application that lets users draft legal agreements by chattin
 
 * Use previously saved documents as a template and make minor changes to generate new legal documents. That's common practice for legal documents.
 * Add terraform configuration files to automate docker container deployment to Google's Container Run.
-* Create a sub-domain linked to the Saas application [Prelegal App](https://prelegal.threecuptea.com/) thus it won't be subject to the service URL change due to terraform's removal and re-creation of Cloud Run Service. Cloud Run is serverless in nature ad requires extra work to accomplish this.
+* Create a sub-domain linked to the Saas application [Prelegal App](https://prelegal.threecuptea.com/) thus it won't be subject to the service URL change due to terraform's removal and re-creation of Cloud Run Service. Cloud Run is serverless in nature and requires extra work to accomplish this.
 * Migrate SQLLite to Postgres to make production records persistent.
 * Replace home-made SignIn/ SignUp, Password Reset, JWT token generation and refresh work with Clerk User Authentication using OTP (Sending verification code to the email without requiring the password).  It is implemented using React App Router.
 
@@ -55,7 +55,7 @@ You are writing specs in Jira tickets and give clear instruction. You need to kn
 
 ## Keep even-handed interaction. Be an engaging participant, learning from Claude Code and keep programming skill sharp
 
-I consider Claude Code as an enthusiatic, tireless high IQ and tech-savy senior developer. I acknoledge that I have some techical deficiency compared with it.  I am humble, willing to learn and try my best to follow, and ask questions.
+I consider Claude Code as an enthusiastic, tireless high IQ and tech-savy senior developer. I acknowledge that I have some techical deficiency compared with it.  I am humble, willing to learn and try my best to follow, and ask questions.
 
 On the side, I have 10,000-foot view. I can see the inconsistency, gap and bad user experiences of design flaw that Claude Code are blind to. I also have intangible software development knowledge and business-context judgement.  I and AI coding can make up for each other.
 
