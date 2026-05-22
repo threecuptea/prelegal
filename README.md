@@ -10,6 +10,10 @@ Prelegal is a SaaS application that lets users draft legal agreements by chattin
 * Migrate SQLLite to Postgres to make production records persistent.
 * Replace home-made SignIn/ SignUp, Password Reset, JWT token generation and refresh work with Clerk User Authentication using OTP (Sending verification code to the email without requiring the password).  It is implemented using React App Router.
 
+The Claude Code is integrated with Jira and Github MCP installed.  Claude Code will read Jira ticket in the 1st: \`Discovery\` phase and create Github PR in the last phase: \`Summary\` of \`feature-dev\` plugin.   Then, I will ask Claude Code to keep CLAUDE.md update to date .  Verify the output and merge the PR. \`/clear\` the context to keep token count low. Iterate the same process for the next ticket.
+
+No need to worry that CLAUDE CODE would lose its memory since CLAUDE CODE always read CLAUDE.md into its memory. That's how daily AI development workflow work in my case.
+
 ## Level up with Claude Code's feature-dev plugin of 7-phase processes
 
 **1. Discovery**
