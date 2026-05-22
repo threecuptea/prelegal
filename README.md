@@ -34,7 +34,6 @@ Clarifying Questions stimulates deep thinkings of some architect design issues a
 
 **I enjoy feature-dev because I feel that I can be an engaging participant in architect design and development.**
 
-
 Quality Review: agents in parallel with different focuses:
 
 * **Simplicity/DRY/Elegance**: Code quality and maintainability
@@ -53,7 +52,7 @@ I found out that I have to redo some architect design and features because I let
 
 You are writing specs in Jira tickets and give clear instruction. You need to know what you are doing ahead of the process. Claude Codes will ask a lot of challenging questions in the **Clarify Question** phase.  Those decision might be critical to the product, the development and deployment.  Remember that you not Claude Code are ultimately responsible for updating/ maintaining products and you want to have a consistent design and architect across the board of all your products.  Claude Code can alleviate you from being bombarded with implementation details and have a quality of life.  However, you have to broaden yourself, and expand your horizon.
 
-## Keep even-handed interaction. Be an engaging participant, learning from Claude Code and keep programming skill sharp
+## Keep a balanced attitude. Be an engaging participant, learning from Claude Code and keep programming skill sharp
 
 I consider Claude Code as an enthusiastic, tireless high IQ and tech-savy senior developer. I acknowledge that I have some techical deficiency compared with it.  I am humble, willing to learn and try my best to follow, and ask questions.
 
