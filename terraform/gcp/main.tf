@@ -147,7 +147,7 @@ resource "google_cloud_run_service" "app" {
 
       containers {
         image = docker_image.app.name
-
+        # for postgresql memory 
         resources {
           limits = {
             cpu    = "1"
@@ -163,11 +163,6 @@ resource "google_cloud_run_service" "app" {
         env {
           name  = "CLERK_JWKS_URL"
           value = var.clerk_jwks_url
-        }
-
-        env {
-          name  = "CLERK_ISSUER"
-          value = var.clerk_issuer
         }
 
         env {
