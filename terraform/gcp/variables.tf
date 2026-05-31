@@ -40,12 +40,6 @@ variable "clerk_jwks_url" {
   type        = string
 }
 
-variable "clerk_issuer" {
-  description = "Clerk issuer URL — passed to Cloud Run but not yet validated by the backend"
-  type        = string
-  default     = ""
-}
-
 variable "db_password" {
   description = "Password for the Cloud SQL prelegal Postgres user"
   type        = string
