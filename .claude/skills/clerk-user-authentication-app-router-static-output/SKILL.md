@@ -251,7 +251,7 @@ clerk_guard = ClerkHTTPBearer(clerk_config)
 
 def _upsert_account_sync(clerk_sub: str, email: str) -> dict:
     # Synchronous function to upsert account in the database 
-    ::
+    # Replace this with your actual database logic
 async def get_current_account(
     creds: HTTPAuthorizationCredentials = Depends(clerk_guard),
 ) -> dict:
