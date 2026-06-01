@@ -209,6 +209,9 @@ Backend available at http://localhost:8000
   - `terraform/gcp`: `clerk_publishable_key` variable added as Docker build arg; `JWT_SECRET`/`RESEND_API_KEY`/`APP_BASE_URL` Cloud Run env vars removed. `variables.tf` cleaned up.
   - Env vars required: `CLERK_JWKS_URL` (backend `.env`); `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` (baked into Docker image at build time via `terraform.tfvars`).
   - Tests: 41 backend (rewrote auth tests; document tests use `dependency_overrides` instead of signup/signin), 49 frontend, all passing.
+- **PL-15** — Add Clerk user authentication skill for App Router static export (PR #18):
+  - Adds `.claude/skills/clerk-user-authentication-app-router-static-output/SKILL.md` — a reusable Claude skill capturing the non-obvious integration choices from PL-14.
+  - Covers: why `@clerk/clerk-react` must be used instead of `@clerk/nextjs` (v7+ Server Actions incompatible with `output: "export"`); dev two-service setup + `next.config.ts` dev-only proxy rewrite; `ClerkProvider` in `providers.tsx` + `layout.tsx` wiring; `authFetch` utility; auth page pattern with `SignInButton`/`SignUpButton` in `mode="modal"`; `useUser()` + `SignOutButton` for nav; FastAPI `fastapi-clerk-auth` backend; required Clerk Dashboard session token customization to include `email` claim; `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` as build-time Docker arg vs `CLERK_JWKS_URL` as runtime env var.
 
   ### Current API Endpoints
 - `GET /api/health` → `{"status": "ok"}`
